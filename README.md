@@ -123,7 +123,7 @@ Ouvrez **http://localhost:5173**. Des comptes de démonstration sont créés aut
 | Acheteuse | `fatou@demo.kaaraange.sn` |
 | Livreur (compte réel, en plus des 6 livreurs simulés) | `moussa@demo.kaaraange.sn` |
 
-Le premier compte créé avec l'adresse de `ADMIN_EMAIL` (par défaut `admin@kaaraange.sn`, voir `.env.example`) est automatiquement administrateur.
+Il n'y a **pas de compte admin tout prêt** : `admin@kaaraange.sn` (la valeur par défaut de `ADMIN_EMAIL` dans `.env.example`) n'existe pas tant que personne ne s'inscrit avec cette adresse. Pour obtenir un compte administrateur, **inscrivez-vous** (pas « se connecter ») avec cet e-mail — il est promu admin automatiquement dès l'inscription.
 
 **Notes :**
 - `python3` n'existe pas sous Windows et n'est pas utilisé ici (backend 100 % Node.js).
