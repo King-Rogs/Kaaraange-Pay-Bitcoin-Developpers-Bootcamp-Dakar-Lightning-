@@ -116,8 +116,8 @@ export function Login() {
     <AuthLayout title="Bon retour parmi nous" subtitle={<>Pas encore de compte ? <Link to="/inscription" className="font-semibold text-brand hover:underline">Créer un compte</Link></>}>
       <form onSubmit={submit} className="flex flex-col gap-5" noValidate>
         <FormError msg={error} />
-        <Field label="Adresse e-mail" type="email" autoComplete="email" icon={<Mail />} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vous@exemple.sn" required />
-        <Field label="Mot de passe" type="password" autoComplete="current-password" icon={<Lock />} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Votre mot de passe" required />
+        <Field label="Adresse e-mail" type="email" autoComplete="email" icon={<Mail />} value={email} onChange={(e) => { setEmail(e.target.value); setError(null) }} placeholder="vous@exemple.sn" required />
+        <Field label="Mot de passe" type="password" autoComplete="current-password" icon={<Lock />} value={password} onChange={(e) => { setPassword(e.target.value); setError(null) }} placeholder="Votre mot de passe" required />
         <div className="flex items-center justify-between text-sm">
           <label className="flex cursor-pointer items-center gap-2.5">
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="h-4 w-4 rounded accent-[rgb(var(--brand))]" />
@@ -193,7 +193,11 @@ export function Register() {
     }
   }
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => setForm({ ...form, [k]: e.target.value })
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm({ ...form, [k]: e.target.value })
+    setErrors((prev) => (prev[k] ? { ...prev, [k]: '' } : prev))
+    setError(null)
+  }
 
   return (
     <AuthLayout title="Créez votre compte" subtitle={<>Déjà inscrit ? <Link to="/connexion" className="font-semibold text-brand hover:underline">Se connecter</Link></>}>
@@ -332,10 +336,10 @@ export function Reset() {
         <form onSubmit={submit} className="flex flex-col gap-5">
           <FormError msg={!token ? 'Lien incomplet : refaites une demande de réinitialisation.' : error} />
           <div className="flex flex-col gap-2.5">
-            <Field label="Nouveau mot de passe" type="password" autoComplete="new-password" icon={<Lock />} value={pw} onChange={(e) => setPw(e.target.value)} />
+            <Field label="Nouveau mot de passe" type="password" autoComplete="new-password" icon={<Lock />} value={pw} onChange={(e) => { setPw(e.target.value); setError(null) }} />
             <StrengthMeter pw={pw} />
           </div>
-          <Field label="Confirmer le mot de passe" type="password" autoComplete="new-password" icon={<Lock />} value={pw2} onChange={(e) => setPw2(e.target.value)} />
+          <Field label="Confirmer le mot de passe" type="password" autoComplete="new-password" icon={<Lock />} value={pw2} onChange={(e) => { setPw2(e.target.value); setError(null) }} />
           <Button type="submit" size="lg" loading={busy} disabled={!token}>
             Enregistrer
           </Button>
