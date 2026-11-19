@@ -1,0 +1,13 @@
+node_modules/
+frontend/dist/
+backend/.env
+backend/data/
+backend/uploads/
+*.db
+*.db-wal
+*.db-shm
+*.log
+# Ancien backend Python, conservé sur le disque pour mémoire
+archive/
+# Clone de référence de connect-lnd (peut être supprimé)
+connect-lnd/

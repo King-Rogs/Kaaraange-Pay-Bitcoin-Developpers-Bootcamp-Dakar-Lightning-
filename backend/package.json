@@ -1,0 +1,23 @@
+{
+  "name": "kaaraange-pay-backend",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Kaaraange Pay — séquestre Lightning + livraison. Backend Express / ln-service, dérivé de la passerelle connect-lnd.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --experimental-sqlite --no-warnings=ExperimentalWarning src/server.js",
+    "dev": "node --watch --experimental-sqlite --no-warnings=ExperimentalWarning src/server.js",
+    "test": "node --experimental-sqlite --no-warnings=ExperimentalWarning --test-reporter=spec test/flow.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^18.0.10",
+    "express": "^5.3.0",
+    "ln-service": "^61.0.0",
+    "multer": "^2.5.0"
+  }
+}
