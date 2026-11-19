@@ -10,6 +10,11 @@ export function compact(n: number) {
   return new Intl.NumberFormat('fr-FR', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
 }
 
+/** Satoshis → BTC, format français, jusqu'à 8 décimales, sans zéro inutile. */
+export function btc(sats: number) {
+  return (sats / 1e8).toLocaleString('fr-FR', { maximumFractionDigits: 8 })
+}
+
 export function timeLeft(s: number) {
   if (s <= 0) return 'expiré'
   const h = Math.floor(s / 3600)

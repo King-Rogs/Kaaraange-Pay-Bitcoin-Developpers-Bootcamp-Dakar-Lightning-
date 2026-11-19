@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  ArrowRight, Bike, Check, ChevronDown, Fingerprint, Hash, KeyRound, Lock, PackageCheck,
-  ShieldCheck, ShoppingBag, Store, Timer, Undo2, Wallet, X, Zap,
+  ArrowRight, Bike, Check, ChevronDown, Fingerprint, Lock, PackageCheck,
+  ShieldCheck, ShoppingBag, Store, Undo2, X, Zap,
 } from 'lucide-react'
 import { useState } from 'react'
 import { BitcoinLogo } from '../components/Logo'
@@ -11,7 +11,7 @@ import { Reveal } from '../components/Reveal'
 import { Footer, Navbar } from '../components/SiteChrome'
 import { cx, LinkButton } from '../components/ui'
 import { useAuth } from '../context/AuthContext'
-import { compact, int, usd } from '../lib/format'
+import { btc, compact, int, usd } from '../lib/format'
 import { useConversions, useMarket, type Range } from '../lib/market'
 
 export default function Landing() {
@@ -24,7 +24,6 @@ export default function Landing() {
         <Problem />
         <HowItWorks />
         <MarketSection />
-        <Security />
         <Personas />
         <UnderTheHood />
         <Faq />
@@ -44,7 +43,7 @@ function Hero() {
       <div className="container-x relative grid items-center gap-10 pb-16 pt-12 lg:grid-cols-[1.05fr_1fr] lg:pb-24 lg:pt-20">
         <div className="flex flex-col gap-7">
           <motion.a
-            href="#securite"
+            href="#fonctionnement"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             className="inline-flex w-fit items-center gap-2 rounded-full border border-line bg-surface py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium shadow-sm"
@@ -99,14 +98,30 @@ function Hero() {
 function TickerStrip() {
   const { ticker } = useMarket()
   const { btcXof, xofToSats } = useConversions()
+  const ready = ticker != null && btcXof != null
+
+  // Le bandeau défile en boucle (translateX(-50%) sur son propre contenu dupliqué).
+  // On n'en monte l'animation qu'une fois toutes les valeurs connues : sinon,
+  // la largeur du contenu change pile au moment où le cours arrive (les « — »
+  // laissent place à des chiffres), ce qui fait sauter le défilement en cours.
+  if (!ready) {
+    return (
+      <div className="border-y border-line bg-surface py-4" aria-label="Indicateurs du marché Bitcoin">
+        <div className="container-x">
+          <div className="h-5 w-full max-w-xl animate-pulse rounded bg-subtle" />
+        </div>
+      </div>
+    )
+  }
+
   const items = [
-    { k: 'BTC / USD', v: ticker ? usd(ticker.price) : '—' },
-    { k: 'Variation 24 h', v: ticker ? `${ticker.changePct >= 0 ? '+' : ''}${ticker.changePct.toFixed(2)} %` : '—', tone: ticker ? (ticker.changePct >= 0 ? 'text-up' : 'text-down') : '' },
-    { k: 'BTC / FCFA', v: btcXof ? `${int(btcXof)} F` : '—' },
-    { k: '1 000 FCFA', v: btcXof ? `${int(xofToSats(1000)!)} sats` : '—' },
-    { k: 'Plus haut 24 h', v: ticker ? usd(ticker.high) : '—' },
-    { k: 'Plus bas 24 h', v: ticker ? usd(ticker.low) : '—' },
-    { k: 'Volume 24 h', v: ticker ? `${compact(ticker.volumeUsd)} $` : '—' },
+    { k: 'BTC / USD', v: usd(ticker.price) },
+    { k: 'Variation 24 h', v: `${ticker.changePct >= 0 ? '+' : ''}${ticker.changePct.toFixed(2)} %`, tone: ticker.changePct >= 0 ? 'text-up' : 'text-down' },
+    { k: 'BTC / FCFA', v: `${int(btcXof)} F` },
+    { k: '1 000 FCFA', v: `${int(xofToSats(1000)!)} sats` },
+    { k: 'Plus haut 24 h', v: usd(ticker.high) },
+    { k: 'Plus bas 24 h', v: usd(ticker.low) },
+    { k: 'Volume 24 h', v: `${compact(ticker.volumeUsd)} $` },
   ]
   const row = (
     <div className="flex shrink-0 items-center gap-10 pr-10">
@@ -303,7 +318,7 @@ function Converter() {
     <div className="card flex h-full flex-col gap-5 p-6 sm:p-8">
       <div className="flex flex-col gap-1">
         <h3 className="text-xl font-bold">Convertisseur</h3>
-        <p className="text-sm text-muted">Combien de sats pour votre prix en FCFA ?</p>
+        <p className="text-sm text-muted">Combien de sats, et de BTC, pour votre prix en FCFA ?</p>
       </div>
       <label className="flex flex-col gap-2">
         <span className="text-sm font-medium">Montant en FCFA</span>
@@ -341,6 +356,10 @@ function Converter() {
           <span className="text-sm font-semibold text-btc-ink">sats</span>
         </div>
       </label>
+      <div className="flex items-center justify-between rounded-xl bg-btc-soft px-4 py-3">
+        <span className="text-sm font-medium text-btc-ink">≈ en BTC</span>
+        <span className="font-display text-lg font-bold tabular text-btc-ink">{computedSats != null ? btc(computedSats) : '—'} BTC</span>
+      </div>
       <div className="mt-auto rounded-xl bg-subtle p-4 text-sm">
         <div className="flex justify-between">
           <span className="text-muted">1 BTC</span>
@@ -352,77 +371,6 @@ function Converter() {
         </div>
       </div>
     </div>
-  )
-}
-
-/* ------------------------------------------------------------------ sécurité */
-function Security() {
-  const points = [
-    { icon: <Hash />, title: 'Hold invoices Lightning', text: 'Une facture « en attente » : l’argent est engagé mais ne peut être encaissé qu’avec le secret de l’acheteur.' },
-    { icon: <KeyRound />, title: 'Le secret ne quitte pas votre téléphone', text: 'Il est généré localement. Le serveur ne reçoit que son empreinte SHA-256, jusqu’au moment de la livraison.' },
-    { icon: <Timer />, title: 'Délai garanti', text: 'Chaque commande a une date limite. Passé ce délai, le paiement est annulé et les fonds reviennent seuls.' },
-    { icon: <Wallet />, title: 'Aucun dépôt chez nous', text: 'Kaaraange Pay orchestre, mais ne détient jamais votre argent. Pas de compte à vider, pas de caisse à piller.' },
-  ]
-  return (
-    <section id="securite" className="scroll-mt-24 bg-[#0B110E] py-24 text-white lg:py-32">
-      <div className="container-x grid gap-14 lg:grid-cols-2 lg:items-center">
-        <div className="flex flex-col gap-10">
-          <Reveal className="flex flex-col gap-4">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5BE39A]">Sécurité</span>
-            <h2 className="text-4xl font-bold leading-[1.08] sm:text-5xl">
-              Personne ne garde l’argent.
-              <br />
-              <span className="text-[#F5C518]">Pas même nous.</span>
-            </h2>
-            <p className="text-lg leading-relaxed text-white/65">La garantie vient du protocole Bitcoin, pas d’une entreprise à qui il faudrait faire confiance.</p>
-          </Reveal>
-          <div className="grid gap-6 sm:grid-cols-2">
-            {points.map((p, i) => (
-              <Reveal key={p.title} delay={i * 0.06} className="flex flex-col gap-3">
-                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/5 text-[#5BE39A] ring-1 ring-white/10 [&>svg]:h-5 [&>svg]:w-5">{p.icon}</span>
-                <h3 className="text-lg font-bold">{p.title}</h3>
-                <p className="text-sm leading-relaxed text-white/60">{p.text}</p>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-        <Reveal delay={0.15}>
-          <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#111A15] shadow-float">
-            <div className="flex items-center gap-2 border-b border-white/10 px-5 py-3.5">
-              <span className="h-3 w-3 rounded-full bg-white/15" />
-              <span className="h-3 w-3 rounded-full bg-white/15" />
-              <span className="h-3 w-3 rounded-full bg-white/15" />
-              <span className="ml-3 font-mono text-xs text-white/50">escrow.py</span>
-            </div>
-            <pre className="overflow-x-auto p-6 font-mono text-[13px] leading-7 text-white/80">
-              <code>
-                <span className="text-white/40"># 1. Le vendeur crée une facture bloquée</span>
-                {'\n'}invoice = lnd.<span className="text-[#5BE39A]">add_hold_invoice</span>(hash, <span className="text-[#F5C518]">25_000</span>)
-                {'\n\n'}
-                <span className="text-white/40"># 2. L'acheteur paie → état ACCEPTED</span>
-                {'\n'}
-                <span className="text-white/40">#    les fonds sont verrouillés dans le canal</span>
-                {'\n\n'}
-                <span className="text-white/40"># 3. À la livraison, le code est vérifié</span>
-                {'\n'}
-                <span className="text-[#7DB7FF]">if</span> sha256(code) == hash:
-                {'\n'}    lnd.<span className="text-[#5BE39A]">settle</span>(code)   <span className="text-white/40"># vendeur payé</span>
-                {'\n\n'}
-                <span className="text-white/40"># 4. Délai dépassé</span>
-                {'\n'}lnd.<span className="text-[#FF8F86]">cancel</span>(hash)        <span className="text-white/40"># acheteur remboursé</span>
-              </code>
-            </pre>
-            <div className="flex flex-wrap gap-2 border-t border-white/10 px-5 py-4">
-              {['Bitcoin Core', 'LND', 'Lightning Network', 'SHA-256'].map((t) => (
-                <span key={t} className="rounded-full bg-white/5 px-3 py-1 text-xs font-medium text-white/70 ring-1 ring-white/10">
-                  {t}
-                </span>
-              ))}
-            </div>
-          </div>
-        </Reveal>
-      </div>
-    </section>
   )
 }
 

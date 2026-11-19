@@ -34,9 +34,32 @@ const listeners = new Set<() => void>()
 let started = false
 let pollTimer: number | undefined
 
+/**
+ * Le flux WebSocket Binance peut émettre plusieurs mises à jour par seconde.
+ * Sans limite, chaque tick re-rend tous les composants abonnés (bandeau,
+ * graphe, badges…) en même temps, ce qui fait « trembler » la page. On
+ * limite donc les re-rendus à un par fenêtre de NOTIFY_MS, tout en gardant
+ * `state` toujours à jour pour la prochaine lecture.
+ */
+const NOTIFY_MS = 400
+let lastNotify = 0
+let notifyTimer: number | undefined
+
+function notify() {
+  lastNotify = Date.now()
+  notifyTimer = undefined
+  listeners.forEach((l) => l())
+}
+
+function scheduleNotify() {
+  const elapsed = Date.now() - lastNotify
+  if (elapsed >= NOTIFY_MS) notify()
+  else if (notifyTimer === undefined) notifyTimer = window.setTimeout(notify, NOTIFY_MS - elapsed)
+}
+
 function set(patch: Partial<MarketState>) {
   state = { ...state, ...patch }
-  listeners.forEach((l) => l())
+  scheduleNotify()
 }
 
 function setPrice(t: Ticker) {
