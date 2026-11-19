@@ -4,6 +4,7 @@ import {
   ShieldCheck, ShoppingBag, Store, Timer, Undo2, Wallet, X, Zap,
 } from 'lucide-react'
 import { useState } from 'react'
+import { Amount } from '../components/Amount'
 import { BitcoinLogo } from '../components/Logo'
 import { ChangePill, LiveDot, LivePrice, PriceChart, RangeTabs } from '../components/Market'
 import { HeroVisual } from '../components/HeroVisual'
@@ -23,6 +24,7 @@ export default function Landing() {
         <TickerStrip />
         <Problem />
         <HowItWorks />
+        <ShopPreview />
         <MarketSection />
         <Security />
         <Personas />
@@ -251,6 +253,50 @@ function HowItWorks() {
             </div>
           </div>
         </Reveal>
+      </div>
+    </section>
+  )
+}
+
+/* ------------------------------------------------------------------ aperçu de la boutique */
+const DEMO_ARTICLES = [
+  { title: 'Robe wax ndokette', price_sat: 25_000 },
+  { title: 'Ensemble bazin brodé', price_sat: 60_000 },
+  { title: 'Sac en cuir tressé', price_sat: 35_000 },
+]
+
+function ShopPreview() {
+  const { user } = useAuth()
+  return (
+    <section className="border-y border-line bg-surface py-24 lg:py-32">
+      <div className="container-x">
+        <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+          <SectionHead
+            eyebrow="Exemple"
+            title="Une boutique, vue par un acheteur."
+            text="Awa Couture, une boutique de démonstration, vend ces articles sur Kaaraange Pay. Prix fixés en sats, convertis en FCFA au cours du moment."
+          />
+          <Reveal>
+            <LinkButton to={user ? '/app/marche' : '/inscription'} variant="secondary" size="lg">
+              Voir le catalogue complet <ArrowRight className="h-4 w-4" />
+            </LinkButton>
+          </Reveal>
+        </div>
+        <div className="mt-12 grid gap-4 sm:grid-cols-3">
+          {DEMO_ARTICLES.map((a, i) => (
+            <Reveal key={a.title} delay={i * 0.08} className="card flex flex-col gap-4 p-5">
+              <div className="flex h-32 items-center justify-center rounded-xl bg-gradient-to-br from-brand-soft to-btc-soft text-4xl font-display font-bold text-brand/70" aria-hidden>
+                {a.title.slice(0, 1)}
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold">{a.title}</span>
+                <span className="text-xs text-muted">Awa Couture (démo) · Médina, Dakar</span>
+              </div>
+              <Amount value={a.price_sat} />
+            </Reveal>
+          ))}
+        </div>
+        <p className="mt-6 text-xs text-muted">Boutique et articles de démonstration, créés automatiquement avec le projet — pas de vraie vente ni de vrais sats.</p>
       </div>
     </section>
   )
