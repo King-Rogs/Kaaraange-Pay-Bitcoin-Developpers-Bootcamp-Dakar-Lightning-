@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  ArrowRight, Bike, Check, ChevronDown, Fingerprint, Lock, PackageCheck,
-  ShieldCheck, ShoppingBag, Store, Undo2, X, Zap,
+  ArrowRight, Bike, Check, ChevronDown, Fingerprint, Hash, KeyRound, Lock, PackageCheck,
+  ShieldCheck, ShoppingBag, Store, Timer, Undo2, Wallet, X, Zap,
 } from 'lucide-react'
 import { useState } from 'react'
 import { BitcoinLogo } from '../components/Logo'
@@ -24,8 +24,8 @@ export default function Landing() {
         <Problem />
         <HowItWorks />
         <MarketSection />
+        <Security />
         <Personas />
-        <UnderTheHood />
         <Faq />
         <FinalCta />
       </main>
@@ -43,7 +43,7 @@ function Hero() {
       <div className="container-x relative grid items-center gap-10 pb-16 pt-12 lg:grid-cols-[1.05fr_1fr] lg:pb-24 lg:pt-20">
         <div className="flex flex-col gap-7">
           <motion.a
-            href="#fonctionnement"
+            href="#securite"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             className="inline-flex w-fit items-center gap-2 rounded-full border border-line bg-surface py-1.5 pl-1.5 pr-3.5 text-[13px] font-medium shadow-sm"
@@ -374,6 +374,72 @@ function Converter() {
   )
 }
 
+/* ------------------------------------------------------------------ sécurité */
+function Security() {
+  const points = [
+    { icon: <Hash />, title: 'Hold invoices Lightning', text: 'Une facture « en attente » : l’argent est engagé mais ne peut être encaissé qu’avec le secret de l’acheteur.' },
+    { icon: <KeyRound />, title: 'Le secret ne quitte pas votre téléphone', text: 'Il est généré localement. Le serveur ne reçoit que son empreinte SHA-256, jusqu’au moment de la livraison.' },
+    { icon: <Timer />, title: 'Délai garanti', text: 'Chaque commande a une date limite. Passé ce délai, le paiement est annulé et les fonds reviennent seuls.' },
+    { icon: <Wallet />, title: 'Aucun dépôt chez nous', text: 'Kaaraange Pay orchestre, mais ne détient jamais votre argent. Pas de compte à vider, pas de caisse à piller.' },
+  ]
+  const steps = [
+    { done: true, title: 'Vous payez', text: 'Votre paiement part, mais reste verrouillé : personne ne peut encore l’encaisser.' },
+    { done: true, title: 'Le colis arrive', text: 'Vous vérifiez l’article, puis donnez votre code au livreur.' },
+    { done: false, title: 'Le vendeur est payé', text: 'Le bon code débloque le paiement, instantanément.' },
+    { done: false, title: 'Jamais livré ? Remboursé.', text: 'Passé le délai, le paiement annulé revient seul dans votre portefeuille.' },
+  ]
+  return (
+    <section id="securite" className="scroll-mt-24 bg-[#0B110E] py-24 text-white lg:py-32">
+      <div className="container-x grid gap-14 lg:grid-cols-2 lg:items-center">
+        <div className="flex flex-col gap-10">
+          <Reveal className="flex flex-col gap-4">
+            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-[#5BE39A]">Sécurité</span>
+            <h2 className="text-4xl font-bold leading-[1.08] sm:text-5xl">
+              Personne ne garde l’argent.
+              <br />
+              <span className="text-[#F5C518]">Pas même nous.</span>
+            </h2>
+            <p className="text-lg leading-relaxed text-white/65">La garantie vient du protocole Bitcoin, pas d’une entreprise à qui il faudrait faire confiance.</p>
+          </Reveal>
+          <div className="grid gap-6 sm:grid-cols-2">
+            {points.map((p, i) => (
+              <Reveal key={p.title} delay={i * 0.06} className="flex flex-col gap-3">
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-white/5 text-[#5BE39A] ring-1 ring-white/10 [&>svg]:h-5 [&>svg]:w-5">{p.icon}</span>
+                <h3 className="text-lg font-bold">{p.title}</h3>
+                <p className="text-sm leading-relaxed text-white/60">{p.text}</p>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+        <Reveal delay={0.15}>
+          <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#111A15] p-6 shadow-float sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Le parcours de votre paiement</p>
+            <div className="relative mt-6 flex flex-col gap-7">
+              <div className="absolute bottom-4 left-[15px] top-4 w-px bg-white/10" aria-hidden />
+              {steps.map((s) => (
+                <div key={s.title} className="relative flex gap-4">
+                  <span
+                    className={cx(
+                      'relative z-10 grid h-8 w-8 shrink-0 place-items-center rounded-full',
+                      s.done ? 'bg-[#5BE39A] text-[#0B110E]' : 'border-2 border-white/20 bg-[#0B110E] text-white/40',
+                    )}
+                  >
+                    {s.done ? <Check className="h-4 w-4" strokeWidth={3} /> : <Lock className="h-3.5 w-3.5" />}
+                  </span>
+                  <div className="pb-1">
+                    <p className="font-semibold">{s.title}</p>
+                    <p className="mt-0.5 text-sm leading-relaxed text-white/55">{s.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
 /* ------------------------------------------------------------------ pour qui */
 function Personas() {
   const tabs = [
@@ -442,47 +508,6 @@ function Personas() {
   )
 }
 
-/* ------------------------------------------------------------------ sous le capot */
-function UnderTheHood() {
-  const items = [
-    { id: 'regtest', t: 'Bitcoin Core · regtest', d: 'Notre propre blockchain de test, compilée depuis les sources.' },
-    { id: 'wallet', t: 'Portefeuilles & adresses', d: 'createwallet, getnewaddress, adresses bech32.' },
-    { id: 'mining', t: 'Minage & coinbase', d: 'generatetoaddress, maturité de 100 blocs.' },
-    { id: 'tx', t: 'Transactions & UTXO', d: 'sendtoaddress, mempool, confirmations, frais.' },
-    { id: 'rpc', t: 'Python & JSON-RPC', d: 'Le backend pilote les nœuds par RPC et REST.' },
-    { id: 'channels', t: 'Canaux Lightning', d: 'Capacité, liquidité locale et distante.' },
-    { id: 'invoices', t: 'Factures BOLT11', d: 'payment_hash, preimage, décodage, paiement.' },
-    { id: 'htlc', t: 'HTLC & hold invoices', d: 'Le séquestre au cœur de Kaaraange Pay.' },
-    { id: 'polar', t: 'Polar · LND', d: 'Nœuds alice et bob, macaroons, TLS.' },
-  ]
-  return (
-    <section className="border-t border-line bg-surface py-24 lg:py-32">
-      <div className="container-x">
-        <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
-          <SectionHead eyebrow="Sous le capot" title="Tout le Bitcoin Bootcamp, au travail." text="Chaque notion de la formation fait tourner une partie de l’application, détaillée dans l’Académie une fois connecté." />
-          <Reveal>
-            <LinkButton to="/inscription" variant="secondary" size="lg">
-              Créer un compte <ArrowRight className="h-4 w-4" />
-            </LinkButton>
-          </Reveal>
-        </div>
-        <div className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {items.map((it, i) => (
-            <Reveal key={it.id} delay={(i % 3) * 0.05}>
-              <div className="flex h-full items-start gap-4 rounded-2xl border border-line bg-bg p-5">
-                <span className="font-display text-sm font-bold text-btc-ink">{String(i + 1).padStart(2, '0')}</span>
-                <div className="flex-1">
-                  <p className="font-semibold">{it.t}</p>
-                  <p className="mt-1 text-sm text-muted">{it.d}</p>
-                </div>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
 
 /* ------------------------------------------------------------------ FAQ */
 function Faq() {
@@ -544,7 +569,7 @@ function FinalCta() {
           <h2 className="text-4xl font-bold leading-tight sm:text-5xl">Votre prochaine vente sera protégée.</h2>
           <p className="text-lg text-white/80">Créez votre compte en une minute. Mettez un article en vente, partagez le lien, et laissez Lightning faire le reste.</p>
           <div className="flex flex-wrap justify-center gap-3">
-            <LinkButton to={user ? '/app' : '/inscription'} size="lg" variant="secondary" className="border-0 bg-white text-[#075C31] hover:bg-white/90">
+            <LinkButton to={user ? '/app' : '/inscription'} size="lg" variant="invert">
               {user ? 'Ouvrir mon espace' : 'Créer mon compte'} <ArrowRight className="h-4 w-4" />
             </LinkButton>
           </div>

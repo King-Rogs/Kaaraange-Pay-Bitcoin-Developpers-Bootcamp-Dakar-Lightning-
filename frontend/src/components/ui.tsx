@@ -6,7 +6,7 @@ import { initials } from '../lib/format'
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dark'
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'dark' | 'invert'
 type Size = 'sm' | 'md' | 'lg'
 
 const variants: Record<Variant, string> = {
@@ -15,6 +15,8 @@ const variants: Record<Variant, string> = {
   ghost: 'text-fg hover:bg-subtle',
   danger: 'bg-danger-soft text-danger hover:brightness-95',
   dark: 'bg-fg text-bg hover:opacity-90',
+  // Bouton blanc à contraste fixe (indépendant du thème clair/sombre) : pour un fond coloré (bannière d'appel à l'action).
+  invert: 'bg-white text-[#075C31] hover:bg-white/90 shadow-sm',
 }
 const sizes: Record<Size, string> = {
   sm: 'h-9 px-3.5 text-sm gap-1.5 rounded-lg',
