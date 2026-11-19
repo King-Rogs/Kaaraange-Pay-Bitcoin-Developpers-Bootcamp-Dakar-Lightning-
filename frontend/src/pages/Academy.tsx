@@ -3,7 +3,6 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { BitcoinLogo } from '../components/Logo'
 import { Reveal } from '../components/Reveal'
-import { Footer, Navbar } from '../components/SiteChrome'
 import { Cli, sha256Hex } from '../components/Tech'
 import { Button, cx } from '../components/ui'
 
@@ -217,17 +216,5 @@ function HashPlayground() {
         </div>
       </div>
     </section>
-  )
-}
-
-export default function AcademyPage() {
-  return (
-    <div className="min-h-screen">
-      <Navbar />
-      <main className="container-x py-16 lg:py-24">
-        <AcademyContent />
-      </main>
-      <Footer />
-    </div>
   )
 }

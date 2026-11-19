@@ -13,7 +13,6 @@ const LINKS = [
   { href: '/#fonctionnement', label: 'Fonctionnement' },
   { href: '/#marche', label: 'Marché' },
   { href: '/#securite', label: 'Sécurité' },
-  { href: '/academie', label: 'Académie' },
   { href: '/#faq', label: 'FAQ' },
 ]
 
@@ -112,7 +111,7 @@ export function Navbar() {
 
 const FOOTER = [
   { title: 'Produit', links: [['Fonctionnement', '/#fonctionnement'], ['Cours du Bitcoin', '/#marche'], ['Sécurité', '/#securite'], ['Créer un compte', '/inscription']] },
-  { title: 'Ressources', links: [['Académie Bitcoin & Lightning', '/academie'], ['Questions fréquentes', '/#faq'], ['Lightning Network', 'https://lightning.network'], ['Bitcoin.org', 'https://bitcoin.org/fr/'], ['Code source', '#']] },
+  { title: 'Ressources', links: [['Questions fréquentes', '/#faq'], ['Lightning Network', 'https://lightning.network'], ['Bitcoin.org', 'https://bitcoin.org/fr/'], ['Code source', '#']] },
   { title: 'Légal', links: [['Conditions d’utilisation', '#'], ['Confidentialité', '#'], ['Mentions légales', '#']] },
 ]
 

@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/kaaraange-logo-dark.png">
+    <img src="docs/brand/kaaraange-logo-light.png" alt="Kaaraange Pay" width="220">
+  </picture>
+</p>
+
 # Kaaraange Pay
 
 **Le séquestre automatique sur Bitcoin Lightning pour le commerce sur WhatsApp, TikTok et Instagram.**

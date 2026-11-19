@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom'
 import { cx } from './ui'
 
+/** Logo officiel : icône colorée pour le thème clair, variante vive pour le thème sombre. */
 export function LogoMark({ size = 36, className }: { size?: number; className?: string }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" className={className} aria-hidden>
-      <rect width="64" height="64" rx="16" className="fill-brand" />
-      <path d="M32 12l16 6v12c0 9-6.8 16.6-16 18-9.2-1.4-16-9-16-18V18l16-6z" fill="none" stroke="white" strokeWidth="4" strokeLinejoin="round" />
-      <path d="M34 22l-8 11h6l-2 9 8-11h-6l2-9z" fill="#F7931A" />
-    </svg>
+    <span className={cx('relative inline-block shrink-0', className)} style={{ width: size, height: size }}>
+      <img src="/brand/icon-light.png" alt="" width={size} height={size} className="absolute inset-0 h-full w-full object-contain dark:hidden" />
+      <img src="/brand/icon-dark.png" alt="" width={size} height={size} className="absolute inset-0 hidden h-full w-full object-contain dark:block" />
+    </span>
   )
 }
 
@@ -16,7 +16,7 @@ export function Logo({ to = '/', className }: { to?: string; className?: string 
     <Link to={to} className={cx('flex items-center gap-2.5', className)} aria-label="Kaaraange Pay — accueil">
       <LogoMark />
       <span className="font-display text-[19px] font-bold tracking-tight">
-        Kaaraange<span className="text-brand"> Pay</span>
+        Kaaraange<span className="text-btc"> Pay</span>
       </span>
     </Link>
   )

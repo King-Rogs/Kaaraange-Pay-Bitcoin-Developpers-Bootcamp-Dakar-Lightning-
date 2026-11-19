@@ -25,7 +25,7 @@ import Profile from './pages/app/Profile'
 import WalletPage from './pages/app/Wallet'
 import Lightning from './pages/app/Lightning'
 import Explorer from './pages/app/Explorer'
-import AcademyPage, { AcademyContent } from './pages/Academy'
+import { AcademyContent } from './pages/Academy'
 import { AdminArticles, AdminAudit, AdminDispatch, AdminGuard, AdminOrders, AdminOverview, AdminSystem, AdminUsers } from './pages/app/Admin'
 
 function ScrollTop() {
@@ -64,7 +64,6 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/inscription" element={<Register />} />
               <Route path="/mot-de-passe-oublie" element={<Forgot />} />
               <Route path="/reinitialiser" element={<Reset />} />
-              <Route path="/academie" element={<AcademyPage />} />
               <Route path="/app" element={<AppLayout />}>
                 <Route index element={<Overview />} />
                 <Route path="boutique" element={<Shop />} />

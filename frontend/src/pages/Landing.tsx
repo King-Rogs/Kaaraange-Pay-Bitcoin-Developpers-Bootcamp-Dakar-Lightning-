@@ -4,7 +4,6 @@ import {
   ShieldCheck, ShoppingBag, Store, Timer, Undo2, Wallet, X, Zap,
 } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { BitcoinLogo } from '../components/Logo'
 import { ChangePill, LiveDot, LivePrice, PriceChart, RangeTabs } from '../components/Market'
 import { HeroVisual } from '../components/HeroVisual'
@@ -512,24 +511,23 @@ function UnderTheHood() {
     <section className="border-t border-line bg-surface py-24 lg:py-32">
       <div className="container-x">
         <div className="flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
-          <SectionHead eyebrow="Sous le capot" title="Tout le Bitcoin Bootcamp, au travail." text="Chaque notion de la formation fait tourner une partie de l’application, et chacune est expliquée dans notre Académie." />
+          <SectionHead eyebrow="Sous le capot" title="Tout le Bitcoin Bootcamp, au travail." text="Chaque notion de la formation fait tourner une partie de l’application, détaillée dans l’Académie une fois connecté." />
           <Reveal>
-            <LinkButton to="/academie" variant="secondary" size="lg">
-              Ouvrir l’Académie <ArrowRight className="h-4 w-4" />
+            <LinkButton to="/inscription" variant="secondary" size="lg">
+              Créer un compte <ArrowRight className="h-4 w-4" />
             </LinkButton>
           </Reveal>
         </div>
         <div className="mt-12 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((it, i) => (
             <Reveal key={it.id} delay={(i % 3) * 0.05}>
-              <Link to={`/academie#${it.id}`} className="group flex h-full items-start gap-4 rounded-2xl border border-line bg-bg p-5 transition hover:-translate-y-0.5 hover:border-brand/40">
+              <div className="flex h-full items-start gap-4 rounded-2xl border border-line bg-bg p-5">
                 <span className="font-display text-sm font-bold text-btc-ink">{String(i + 1).padStart(2, '0')}</span>
                 <div className="flex-1">
                   <p className="font-semibold">{it.t}</p>
                   <p className="mt-1 text-sm text-muted">{it.d}</p>
                 </div>
-                <ArrowRight className="mt-1 h-4 w-4 text-muted transition group-hover:translate-x-0.5 group-hover:text-brand" />
-              </Link>
+              </div>
             </Reveal>
           ))}
         </div>
