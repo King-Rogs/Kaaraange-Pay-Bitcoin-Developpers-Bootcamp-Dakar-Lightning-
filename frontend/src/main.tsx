@@ -24,8 +24,6 @@ import Courier from './pages/app/Courier'
 import Profile from './pages/app/Profile'
 import WalletPage from './pages/app/Wallet'
 import Lightning from './pages/app/Lightning'
-import Explorer from './pages/app/Explorer'
-import { AcademyContent } from './pages/Academy'
 import { AdminArticles, AdminAudit, AdminDispatch, AdminGuard, AdminOrders, AdminOverview, AdminSystem, AdminUsers } from './pages/app/Admin'
 
 function ScrollTop() {
@@ -73,8 +71,6 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="profil" element={<Profile />} />
                 <Route path="portefeuille" element={<WalletPage />} />
                 <Route path="lightning" element={<Lightning />} />
-                <Route path="explorateur" element={<Explorer />} />
-                <Route path="academie" element={<AcademyContent inApp />} />
                 <Route path="admin" element={<AdminGuard><AdminOverview /></AdminGuard>} />
                 <Route path="admin/utilisateurs" element={<AdminGuard><AdminUsers /></AdminGuard>} />
                 <Route path="admin/commandes" element={<AdminGuard><AdminOrders /></AdminGuard>} />

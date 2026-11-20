@@ -2,7 +2,6 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Camera, MapPin, Package, Plus, RotateCcw, Store, Trash2, Undo2 } from 'lucide-react'
 import { useRef, useState, type FormEvent } from 'react'
 import { Amount } from '../../components/Amount'
-import { Concept } from '../../components/Tech'
 import { ICONS, MapPicker } from '../../components/Maps'
 import { Avatar, Button, EmptyState, Field, StatusBadge } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
@@ -141,9 +140,6 @@ export default function Shop() {
           <Button type="submit" loading={busy}>
             <Plus className="h-4 w-4" /> Mettre en vente
           </Button>
-          <Concept title="Pourquoi une boutique sur la carte ?" to="/app/academie">
-            Les frais de livraison sont calculés par la distance réelle entre votre boutique et le client (haversine × facteur de route), convertie en sats au cours du moment.
-          </Concept>
         </form>
 
         <div className="flex flex-col gap-6">

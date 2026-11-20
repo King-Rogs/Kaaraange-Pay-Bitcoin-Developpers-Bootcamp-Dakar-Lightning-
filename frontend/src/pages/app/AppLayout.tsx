@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bike, Blocks, Gauge, GraduationCap, LayoutDashboard, LogOut, Map, Menu, Package, ScrollText, Server, ShieldCheck, ShoppingBag, Store, Tag, UserRound, Users, Wallet, X, Zap } from 'lucide-react'
+import { Bike, Gauge, LayoutDashboard, LogOut, Map, Menu, Package, ScrollText, Server, ShieldCheck, ShoppingBag, Store, Tag, UserRound, Users, Wallet, X, Zap } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { BitcoinLogo, Logo } from '../../components/Logo'
@@ -29,8 +29,6 @@ const NAV: { title: string; items: NavItem[] }[] = [
     items: [
       { to: '/app/portefeuille', label: 'Portefeuille', icon: Wallet },
       { to: '/app/lightning', label: 'Console Lightning', icon: Zap },
-      { to: '/app/explorateur', label: 'Explorateur', icon: Blocks },
-      { to: '/app/academie', label: 'Académie', icon: GraduationCap },
     ],
   },
   { title: 'Compte', items: [{ to: '/app/profil', label: 'Mon profil', icon: UserRound }] },

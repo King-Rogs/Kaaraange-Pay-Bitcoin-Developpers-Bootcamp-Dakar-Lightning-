@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, CheckCircle2, FileText, Network, Radio, ScanSearch, Server, Zap } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { useEffect, useState, type FormEvent } from 'react'
-import { Cli, Concept, Mono, SectionCard, sha256Hex } from '../../components/Tech'
+import { Cli, Mono, SectionCard, sha256Hex } from '../../components/Tech'
 import { Button, cx, Field, Spinner } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { api, ApiError, type Decoded, type LnHistory, type LnNode, type PayResult } from '../../lib/api'
@@ -92,9 +92,6 @@ function NodeCard({ node, mode }: { node: Extract<LnNode, { reachable: true }>; 
         ))}
       </dl>
       <Cli cmd={`lncli --rpcserver=127.0.0.1:1000x --network=regtest getinfo`} />
-      <Concept title="Macaroon et TLS" to="/app/academie">
-        L’API gRPC de LND est protégée par un certificat <b>TLS</b> (chiffrement) et un <b>macaroon</b> (jeton d’autorisation). Polar les fournit dans l’onglet « Connect » de chaque nœud.
-      </Concept>
     </SectionCard>
   )
 }
@@ -142,9 +139,6 @@ function ChannelCard({ node }: { node: Extract<LnNode, { reachable: true }> }) {
           )
         })
       )}
-      <Concept title="Liquidité locale et distante" to="/app/academie">
-        Un canal est une transaction 2-sur-2 sur la blockchain. Chaque paiement déplace la répartition : votre solde <b>local</b> est ce que vous pouvez envoyer, le solde <b>distant</b> ce que vous pouvez recevoir.
-      </Concept>
     </SectionCard>
   )
 }
@@ -197,9 +191,6 @@ function InvoiceCard({ k, onDone }: { k: string; onDone: () => void }) {
           )}
         </AnimatePresence>
         <Cli cmd={`lncli --network=regtest addinvoice --amt ${amount || 0} --memo "${memo}"`} />
-        <Concept title="Facture BOLT11" to="/app/academie">
-          Une facture encode le montant, le destinataire et le <b>payment_hash</b> = SHA-256 d’un secret (la <b>preimage</b>) que seul le destinataire connaît.
-        </Concept>
       </SectionCard>
     </form>
   )
@@ -291,9 +282,6 @@ function PayCard({ k, others, onDone }: { k: string; others: string[]; onDone: (
         </motion.div>
       )}
       <Cli cmd={`lncli --network=regtest ${dec ? 'payinvoice' : 'decodepayreq'} ${req ? req.slice(0, 24) + '…' : '<facture>'}`} />
-      <Concept title="Preimage = preuve de paiement" to="/app/academie">
-        Le paiement voyage en <b>HTLC</b> : il n’est débloqué que contre la preimage. La recevoir prouve mathématiquement que le destinataire a été payé.
-      </Concept>
     </SectionCard>
   )
 }

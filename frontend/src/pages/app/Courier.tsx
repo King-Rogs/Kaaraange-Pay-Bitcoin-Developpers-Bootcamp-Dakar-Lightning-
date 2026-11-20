@@ -3,7 +3,7 @@ import { Bike, Check, Clock, LogOut, MapPin, Navigation, Package, Power, Satelli
 import { useEffect, useRef, useState } from 'react'
 import { Amount } from '../../components/Amount'
 import { FleetMap, TrackMap } from '../../components/Maps'
-import { Concept, SectionCard } from '../../components/Tech'
+import { SectionCard } from '../../components/Tech'
 import { Avatar, Button, cx, EmptyState, Field, Spinner, StatusBadge } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { api, ApiError, type CourierMe } from '../../lib/api'
@@ -113,10 +113,6 @@ export default function Courier() {
       ) : (
         <EmptyState icon={<Bike />} title="Pas encore localisé" text="Passez en ligne pour être localisé (mode simulé) ou autorisez la géolocalisation (mode GPS)." />
       )}
-
-      <Concept title="L’attribution automatique" to="/app/academie">
-        Chaque commande cherche le livreur disponible le moins coûteux (distance + fiabilité + note). Il reçoit une offre de 30 s : accepter, refuser, ou laisser expirer passe au suivant.
-      </Concept>
 
       <SectionCard title="Historique" icon={<Wallet />} className="mt-6">
         {!data.history.length ? (

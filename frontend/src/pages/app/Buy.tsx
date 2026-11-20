@@ -3,7 +3,6 @@ import { Lock, MapPin, Search, ShieldCheck, ShoppingBag, Star, X } from 'lucide-
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Amount } from '../../components/Amount'
-import { Concept } from '../../components/Tech'
 import { ICONS, MapPicker } from '../../components/Maps'
 import { Avatar, Button, EmptyState, Field, Spinner } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
@@ -181,10 +180,6 @@ function OrderModal({ article, onClose }: { article: Article; onClose: () => voi
           ) : (
             <p className="text-sm text-muted">Cliquez sur la carte pour estimer les frais.</p>
           )}
-
-          <Concept title="Deux factures, un seul paiement" to="/app/academie">
-            Le paiement bloque deux factures Lightning distinctes : une pour l’article (chez le vendeur), une pour la livraison (chez le livreur). Votre code secret, généré ici sur votre appareil, débloquera les deux d’un coup à la remise.
-          </Concept>
 
           <Button size="lg" disabled={!quote || busy} loading={busy} onClick={confirm}>
             <Lock className="h-4 w-4" /> {quote ? `Payer ${quote.total_sat.toLocaleString('fr-FR')} sats` : 'Payer'}
