@@ -28,8 +28,9 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: 'Bitcoin',
     items: [{ to: '/app/portefeuille', label: 'Portefeuille', icon: Wallet }],
   },
-  { title: 'Compte', items: [{ to: '/app/profil', label: 'Mon profil', icon: UserRound }] },
 ]
+
+const COMPTE_NAV: { title: string; items: NavItem[] } = { title: 'Compte', items: [{ to: '/app/profil', label: 'Mon profil', icon: UserRound }] }
 
 const ADMIN_NAV: { title: string; items: NavItem[] } = {
   title: 'Administration',
@@ -46,7 +47,8 @@ const ADMIN_NAV: { title: string; items: NavItem[] } = {
 
 function SideNav({ onNavigate }: { onNavigate?: () => void }) {
   const { user } = useAuth()
-  const groups = user?.is_admin ? [ADMIN_NAV, ...NAV] : NAV
+  // Un compte administrateur n'a pas les droits d'un utilisateur : pas d'achat, de vente ni de livraison.
+  const groups = user?.is_admin ? [ADMIN_NAV, COMPTE_NAV] : [...NAV, COMPTE_NAV]
   return (
     <nav className="flex flex-col gap-5" aria-label="Application">
       {groups.map((group) => (

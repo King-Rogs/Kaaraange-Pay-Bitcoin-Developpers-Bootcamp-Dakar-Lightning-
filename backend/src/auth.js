@@ -112,6 +112,17 @@ function requireAdmin(req, _res, next) {
   next();
 }
 
+/**
+ * Un compte administrateur n'a pas les droits d'un utilisateur ordinaire :
+ * il ne peut ni acheter, ni vendre, ni livrer. À poser après requireAuth sur
+ * les routes commerce/livraison (jamais sur /api/me, le profil reste géré
+ * normalement).
+ */
+function blockAdmin(req, _res, next) {
+  if (req.user?.is_admin) fail(403, 'Un compte administrateur ne peut pas acheter, vendre ou livrer.');
+  next();
+}
+
 /** Limite simple des tentatives de connexion (10 échecs / 15 min par IP + e-mail). */
 const attempts = new Map();
 function tooManyAttempts(key) {
@@ -314,4 +325,4 @@ router.get('/users/:id/reviews', requireAuth, (req, res) => {
   });
 });
 
-module.exports = { router, loadUser, requireAuth, requireAdmin, publicUser, ratingsOf, hashPassword, checkPassword, avatarUrl, sniffImage, COOKIE };
+module.exports = { router, loadUser, requireAuth, requireAdmin, blockAdmin, publicUser, ratingsOf, hashPassword, checkPassword, avatarUrl, sniffImage, COOKIE };

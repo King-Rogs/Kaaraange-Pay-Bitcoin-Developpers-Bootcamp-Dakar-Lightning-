@@ -6,7 +6,7 @@ import { BitcoinLogo } from '../../components/Logo'
 import { ChangePill, LiveDot, LivePrice, PriceChart, RangeTabs } from '../../components/Market'
 import { Avatar, EmptyState, StatusBadge } from '../../components/ui'
 import { useAuth } from '../../context/AuthContext'
-import type { Order, Stats } from '../../lib/api'
+import type { Order, Stats, Wallet as WalletInfo } from '../../lib/api'
 import { dateTime } from '../../lib/format'
 import { useMarket, type Range } from '../../lib/market'
 import { usePoll } from '../../lib/usePoll'
@@ -15,6 +15,7 @@ import { PageHeader } from './AppLayout'
 export default function Overview() {
   const { user } = useAuth()
   const { data } = usePoll<{ stats: Stats; recent: Order[] }>('/api/stats', 4000)
+  const { data: wallet } = usePoll<WalletInfo>('/api/wallet', 4000)
   const { ticker } = useMarket()
   const [range, setRange] = useState<Range>('24H')
 
@@ -32,6 +33,12 @@ export default function Overview() {
   return (
     <>
       <PageHeader title={`${hello}, ${user!.name.split(' ')[0]}`} text="Voici l’état de vos ventes, achats et livraisons." />
+
+      <Link to="/app/portefeuille" className="card relative mb-4 block overflow-hidden p-6 transition hover:border-brand/40">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-btc/15 blur-3xl" aria-hidden />
+        <p className="text-sm font-medium text-muted">Solde disponible</p>
+        <Amount value={wallet?.exists ? wallet.balances?.trusted_sat ?? 0 : 0} big className="mt-2" />
+      </Link>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((c) => (

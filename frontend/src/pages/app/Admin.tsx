@@ -180,6 +180,7 @@ export function AdminUsers() {
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-muted">
                 <th className="p-3.5 font-semibold">Utilisateur</th>
+                <th className="p-3.5 font-semibold">Solde disponible</th>
                 <th className="p-3.5 font-semibold">Notes</th>
                 <th className="p-3.5 font-semibold">Ventes / achats</th>
                 <th className="p-3.5 font-semibold">Refus / absences</th>
@@ -200,6 +201,7 @@ export function AdminUsers() {
                       </div>
                     </div>
                   </td>
+                  <td className="p-3.5"><Amount value={u.wallet_sat} /></td>
                   <td className="p-3.5 text-xs">
                     <p>Vendeur {u.ratings.vendeur.avg ?? '—'} ({u.ratings.vendeur.count})</p>
                     <p>Livreur {u.ratings.livreur.avg ?? '—'} ({u.ratings.livreur.count})</p>

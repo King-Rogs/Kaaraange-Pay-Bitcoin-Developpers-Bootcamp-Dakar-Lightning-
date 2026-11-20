@@ -690,6 +690,27 @@ test('admin : suspension qui coupe la session, pas de modification de son propre
   expectStatus(await c2.post('/api/auth/login', { email: 'ibou@kaaraange.test', password: 'motdepasse1' }), 200);
   const p = expectStatus(await admin.patch(`/api/admin/users/${users.vendeuse.id}`, { is_admin: true }), 200);
   assert.equal(p.user.is_admin, true);
+  // Un compte administrateur n'a pas les droits d'un utilisateur : la vendeuse est
+  // redescendue pour que les tests suivants puissent continuer à l'utiliser comme vendeuse.
+  const d = expectStatus(await admin.patch(`/api/admin/users/${users.vendeuse.id}`, { is_admin: false }), 200);
+  assert.equal(d.user.is_admin, false);
+});
+
+test('admin : un compte administrateur n’a pas les droits d’un utilisateur', async () => {
+  let r = await admin.get('/api/articles');
+  assert.equal(r.status, 403);
+  r = await admin.post('/api/articles', { title: 'Interdit', price_sat: 1000 });
+  assert.equal(r.status, 403);
+  r = await admin.post('/api/quote', { article_id: article.id, ...PLATEAU });
+  assert.equal(r.status, 403);
+  r = await admin.post('/api/orders', { article_id: article.id, ...PLATEAU, item_hash: newCode().hash });
+  assert.equal(r.status, 403);
+  r = await admin.get('/api/stats');
+  assert.equal(r.status, 403);
+  r = await admin.post('/api/courier/status', { status: 'available', mode: 'sim', ...PLATEAU });
+  assert.equal(r.status, 403);
+  // Les routes d'administration restent accessibles.
+  expectStatus(await admin.get('/api/admin/stats'), 200);
 });
 
 test('admin : journal d’audit complet', async () => {

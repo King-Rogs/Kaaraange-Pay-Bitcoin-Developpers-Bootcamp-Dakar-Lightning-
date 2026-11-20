@@ -17,7 +17,7 @@ const db = require('./db');
 const ln = require('./lightning');
 const price = require('./price');
 const v = require('./util');
-const { requireAuth, publicUser, ratingsOf } = require('./auth');
+const { requireAuth, blockAdmin, publicUser, ratingsOf } = require('./auth');
 const actions = require('./order-actions');
 const { incident, serviceRating } = require('./courier-metrics');
 const { fail, now, haversine, sha256hex, randomHex, isHex64, round } = v;
@@ -316,7 +316,7 @@ async function adminRefundFee(o, adminId) {
 /* ---------- Routes ---------- */
 
 const router = express.Router();
-router.use(['/articles', '/quote', '/orders', '/stats'], requireAuth);
+router.use(['/articles', '/quote', '/orders', '/stats'], requireAuth, blockAdmin);
 
 router.get('/articles', (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();

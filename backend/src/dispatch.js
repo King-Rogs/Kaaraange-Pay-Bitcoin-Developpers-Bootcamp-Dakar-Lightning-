@@ -16,7 +16,7 @@ const express = require('express');
 const config = require('./config');
 const db = require('./db');
 const v = require('./util');
-const { requireAuth, ratingsOf, publicUser } = require('./auth');
+const { requireAuth, blockAdmin, ratingsOf, publicUser } = require('./auth');
 const { serviceRating } = require('./courier-metrics');
 const { fail, now, haversine, moveToward, DAKAR, round } = v;
 
@@ -259,7 +259,7 @@ function tick() {
 /* ---------- Routes ---------- */
 
 const router = express.Router();
-router.use('/courier', requireAuth);
+router.use('/courier', requireAuth, blockAdmin);
 
 router.get('/courier/me', (req, res) => {
   const c = ensureCourier(req.user.id);

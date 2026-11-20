@@ -33,6 +33,19 @@ function GuestOnly({ children }: { children: ReactNode }) {
   return <>{children}</>
 }
 
+/** Un compte administrateur n'a pas les droits d'un utilisateur : pas d'achat, de vente ni de livraison. */
+function UserOnly({ children }: { children: ReactNode }) {
+  const { user } = useAuth()
+  if (user?.is_admin) return <Navigate to="/app/admin" replace />
+  return <>{children}</>
+}
+
+/** Page d'accueil de l'espace connecté : le tableau de bord pour un utilisateur, l'administration pour un admin. */
+function Home() {
+  const { user } = useAuth()
+  return user?.is_admin ? <Navigate to="/app/admin" replace /> : <Overview />
+}
+
 function ScrollTop() {
   const { pathname, hash } = useLocation()
   useEffect(() => {
@@ -70,13 +83,13 @@ createRoot(document.getElementById('root')!).render(
               <Route path="/mot-de-passe-oublie" element={<Forgot />} />
               <Route path="/reinitialiser" element={<Reset />} />
               <Route path="/app" element={<AppLayout />}>
-                <Route index element={<Overview />} />
-                <Route path="boutique" element={<Shop />} />
-                <Route path="marche" element={<Buy />} />
-                <Route path="achats" element={<Purchases />} />
-                <Route path="livreur" element={<Courier />} />
+                <Route index element={<Home />} />
+                <Route path="boutique" element={<UserOnly><Shop /></UserOnly>} />
+                <Route path="marche" element={<UserOnly><Buy /></UserOnly>} />
+                <Route path="achats" element={<UserOnly><Purchases /></UserOnly>} />
+                <Route path="livreur" element={<UserOnly><Courier /></UserOnly>} />
                 <Route path="profil" element={<Profile />} />
-                <Route path="portefeuille" element={<WalletPage />} />
+                <Route path="portefeuille" element={<UserOnly><WalletPage /></UserOnly>} />
                 <Route path="admin" element={<AdminGuard><AdminOverview /></AdminGuard>} />
                 <Route path="admin/utilisateurs" element={<AdminGuard><AdminUsers /></AdminGuard>} />
                 <Route path="admin/commandes" element={<AdminGuard><AdminOrders /></AdminGuard>} />

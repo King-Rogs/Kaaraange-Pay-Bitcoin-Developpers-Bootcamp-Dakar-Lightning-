@@ -311,6 +311,7 @@ export type AdminUser = PublicUser & {
   last_seen_at: number | null
   ratings: { vendeur: Rating; livreur: Rating; client: Rating }
   courier_service: ServiceRating
+  wallet_sat: number
   sales: number
   purchases: number
   refusals: number

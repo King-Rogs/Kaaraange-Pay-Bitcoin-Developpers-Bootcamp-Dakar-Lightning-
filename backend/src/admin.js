@@ -13,7 +13,7 @@ const orders = require('./orders');
 const dispatch = require('./dispatch');
 const v = require('./util');
 const { requireAdmin, publicUser, ratingsOf } = require('./auth');
-const { nodeSnapshot } = require('./chain');
+const { nodeSnapshot, walletName } = require('./chain');
 const { fail, now } = v;
 const { alerts } = require('./alerts');
 const { serviceRating } = require('./courier-metrics');
@@ -100,6 +100,21 @@ function userRows(q) {
   }));
 }
 
+/** Solde disponible (sats) du portefeuille regtest de l'utilisateur, 0 si pas encore créé. */
+async function walletBalance(userId) {
+  try {
+    const name = walletName({ id: userId });
+    if (!(await bitcoin.chain.walletExists(name))) return 0;
+    return (await bitcoin.chain.walletInfo(name)).balances.trusted_sat;
+  } catch {
+    return 0;
+  }
+}
+
+async function withWalletBalance(users) {
+  return Promise.all(users.map(async (u) => ({ ...u, wallet_sat: await walletBalance(u.id) })));
+}
+
 const csvCell = (x) => {
   const s = x == null ? '' : String(x);
   // Neutralise les formules (injection CSV) et échappe les guillemets.
@@ -107,13 +122,13 @@ const csvCell = (x) => {
   return /[";\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 };
 
-router.get('/admin/users', (req, res) => {
-  const users = userRows(String(req.query.q || '').trim());
+router.get('/admin/users', async (req, res) => {
+  const users = await withWalletBalance(userRows(String(req.query.q || '').trim()));
   if (req.query.format === 'csv') {
-    const head = ['id', 'nom', 'email', 'telephone', 'boutique', 'admin', 'suspendu', 'bot', 'inscrit_le', 'note_vendeur', 'note_livreur', 'note_client', 'ventes', 'achats', 'refus', 'absences', 'livraisons'];
+    const head = ['id', 'nom', 'email', 'telephone', 'boutique', 'admin', 'suspendu', 'bot', 'inscrit_le', 'solde_disponible_sat', 'note_vendeur', 'note_livreur', 'note_client', 'ventes', 'achats', 'refus', 'absences', 'livraisons'];
     const lines = users.map((u) =>
       [u.id, u.name, u.email, u.phone, u.shop_name, u.is_admin ? 'oui' : 'non', u.is_suspended ? 'oui' : 'non', u.is_bot ? 'oui' : 'non', new Date(u.created_at * 1000).toISOString(),
-        u.ratings.vendeur.avg ?? '', u.ratings.livreur.avg ?? '', u.ratings.client.avg ?? '', u.sales, u.purchases, u.refusals, u.absences, u.deliveries]
+        u.wallet_sat, u.ratings.vendeur.avg ?? '', u.ratings.livreur.avg ?? '', u.ratings.client.avg ?? '', u.sales, u.purchases, u.refusals, u.absences, u.deliveries]
         .map(csvCell)
         .join(';'),
     );
@@ -124,7 +139,7 @@ router.get('/admin/users', (req, res) => {
   return res.json({ users });
 });
 
-router.patch('/admin/users/:id', (req, res) => {
+router.patch('/admin/users/:id', async (req, res) => {
   const id = v.idParam(req.params.id);
   if (id === req.user.id) fail(403, 'Vous ne pouvez pas modifier votre propre compte depuis l’administration.');
   const u = db.one('SELECT * FROM users WHERE id = ?', id);
@@ -146,7 +161,8 @@ router.patch('/admin/users/:id', (req, res) => {
   }
   const action = fields.is_suspended === 1 ? 'admin.suspension' : fields.is_suspended === 0 ? 'admin.reactivation' : fields.is_admin ? 'admin.nomination' : 'admin.retrait_admin';
   db.audit(req.user.id, action, `user:${id}`, fields, req.ip);
-  res.json({ user: userRows('').find((x) => x.id === id) });
+  const [user] = await withWalletBalance([userRows('').find((x) => x.id === id)]);
+  res.json({ user });
 });
 
 router.get('/admin/orders', async (req, res) => {
