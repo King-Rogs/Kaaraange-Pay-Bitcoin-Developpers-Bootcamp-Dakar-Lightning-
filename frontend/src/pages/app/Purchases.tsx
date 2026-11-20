@@ -1,10 +1,10 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowLeft, Check, ChevronRight, Package, QrCode, Star, Truck, X } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
 import { useState } from 'react'
 import { Amount } from '../../components/Amount'
+import { AppQr } from '../../components/AppQr'
 import { TrackMap } from '../../components/Maps'
-import { Mono, SectionCard } from '../../components/Tech'
+import { SectionCard } from '../../components/Tech'
 import { Avatar, Button, EmptyState, Field, Spinner, StatusBadge } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { api, ApiError, REFUSE_REASONS, type Order } from '../../lib/api'
@@ -12,6 +12,17 @@ import { dateTime } from '../../lib/format'
 import { getCode, groupCode } from '../../lib/secrets'
 import { usePoll } from '../../lib/usePoll'
 import { PageHeader } from './AppLayout'
+
+/** Rayon (km) en deçà duquel on considère que le livreur est arrivé chez le client. */
+const ARRIVAL_RADIUS_KM = 0.5
+
+function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
+  const rad = (d: number) => (d * Math.PI) / 180
+  const dLat = rad(b.lat - a.lat)
+  const dLng = rad(b.lng - a.lng)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)))
+}
 
 const STEPS = [
   { key: 'awaiting_payment', label: 'Commande payée' },
@@ -91,6 +102,9 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
   const [busy, setBusy] = useState<string | null>(null)
   const [refuseOpen, setRefuseOpen] = useState(false)
   const code = getCode(String(order.id))
+  const courierPos = order.courier?.position
+  const distanceToMe = courierPos ? distanceKm(courierPos, order.delivery) : null
+  const courierArrived = distanceToMe != null && distanceToMe <= ARRIVAL_RADIUS_KM
 
   async function receive() {
     if (!code) {
@@ -157,9 +171,9 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
         <SectionCard title="Code de livraison" icon={<QrCode />} className="mb-6">
           {code ? (
             <>
-              <p className="text-sm text-muted">Montrez ce QR code au livreur à la remise, ou confirmez vous-même la réception ci-dessous.</p>
+              <p className="text-sm text-muted">Montrez ce QR code au livreur à la remise.</p>
               <div className="mx-auto rounded-2xl border border-line bg-white p-3">
-                <QRCodeSVG value={code} size={160} />
+                <AppQr value={code} size={160} />
               </div>
               <div className="rounded-xl bg-subtle p-3 text-center font-mono text-sm tracking-wide">{groupCode(code)}</div>
             </>
@@ -167,16 +181,21 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
             <p className="text-sm text-danger">Code introuvable sur cet appareil (navigateur différent ?) : demandez au livreur de passer par la confirmation du vendeur ou contactez l’administration.</p>
           )}
           {order.status === 'delivery_pending' && <p className="text-sm text-warn">Remise enregistrée, confirmation Lightning en cours (quelques secondes).</p>}
-          {order.status === 'picked_up' && (
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button className="flex-1" loading={busy === 'deliver'} disabled={!code} onClick={receive}>
-                <Check className="h-4 w-4" /> J’ai reçu mon colis
-              </Button>
-              <Button variant="danger" className="flex-1" onClick={() => setRefuseOpen(true)}>
-                <X className="h-4 w-4" /> Refuser le colis
-              </Button>
-            </div>
-          )}
+          {order.status === 'picked_up' &&
+            (courierArrived ? (
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Button className="flex-1" loading={busy === 'deliver'} disabled={!code} onClick={receive}>
+                  <Check className="h-4 w-4" /> J’ai reçu mon colis
+                </Button>
+                <Button variant="danger" className="flex-1" onClick={() => setRefuseOpen(true)}>
+                  <X className="h-4 w-4" /> Refuser le colis
+                </Button>
+              </div>
+            ) : (
+              <p className="rounded-xl bg-subtle px-4 py-3 text-center text-sm text-muted">
+                {distanceToMe != null ? `Le livreur arrive (encore ${distanceToMe.toFixed(1)} km)` : 'En attente de la position du livreur'} : vous pourrez confirmer la réception ou refuser le colis une fois qu’il sera sur place.
+              </p>
+            ))}
         </SectionCard>
       )}
 
@@ -187,31 +206,8 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
         </SectionCard>
       )}
 
-      <SectionCard title="Sous le capot : les deux factures Lightning" icon={<QrCode />} className="mt-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <InvoiceBlock label="A · article" inv={order.invoices.item} />
-          <InvoiceBlock label="B · livraison" inv={order.invoices.fee} />
-        </div>
-        <p className="text-xs text-muted">Le secret de la facture B (livraison) n’est jamais exposé par l’API : seul le serveur peut la régler. Votre code de livraison débloque la facture A, et sa confirmation déclenche automatiquement le règlement de B.</p>
-      </SectionCard>
-
       <AnimatePresence>{refuseOpen && <RefuseModal order={order} onClose={() => setRefuseOpen(false)} onDone={onChange} />}</AnimatePresence>
     </>
-  )
-}
-
-function InvoiceBlock({ label, inv }: { label: string; inv: Order['invoices']['item'] }) {
-  const cls = { OPEN: 'bg-subtle text-muted', ACCEPTED: 'bg-warn-soft text-warn', SETTLED: 'bg-brand-soft text-brand', CANCELED: 'bg-danger-soft text-danger' }[inv.state]
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-line p-4">
-      <div className="flex items-center justify-between">
-        <span className="font-semibold">{label}</span>
-        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}>{inv.state}</span>
-      </div>
-      <p className="text-xs text-muted">Nœud {inv.node}</p>
-      <Amount value={inv.sats} />
-      <Mono value={inv.hash} label="le payment_hash" />
-    </div>
   )
 }
 

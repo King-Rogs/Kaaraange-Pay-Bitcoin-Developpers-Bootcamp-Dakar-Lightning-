@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { ArrowDownLeft, ArrowUpRight, Coins, CreditCard, RefreshCw, Send, Wallet as WalletIcon } from 'lucide-react'
-import { QRCodeSVG } from 'qrcode.react'
 import { useState, type FormEvent } from 'react'
+import { AppQr } from '../../components/AppQr'
 import { Btc as BtcAmount } from './walletParts'
 import { Mono, SectionCard } from '../../components/Tech'
 import { Button, cx, EmptyState, Field } from '../../components/ui'
@@ -102,7 +102,7 @@ export default function WalletPage() {
           {address ? (
             <>
               <div className="mx-auto rounded-2xl border border-line bg-white p-3">
-                <QRCodeSVG value={`bitcoin:${address}`} size={156} />
+                <AppQr value={`bitcoin:${address}`} size={156} />
               </div>
               <div className="flex flex-col gap-1.5 rounded-xl bg-subtle p-3">
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted">Votre adresse</span>
