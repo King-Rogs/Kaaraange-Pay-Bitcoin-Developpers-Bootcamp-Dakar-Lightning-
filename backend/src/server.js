@@ -20,39 +20,9 @@ const orders = require('./orders');
 const dispatch = require('./dispatch');
 const chain = require('./chain');
 const admin = require('./admin');
-const { HttpError, lnError, now, DAKAR } = require('./util');
+const { HttpError, lnError, now } = require('./util');
 
-/* ---------- Données de démonstration (clairement des exemples) ---------- */
-
-async function seedDemo() {
-  if (db.one('SELECT id FROM users WHERE is_demo = 1')) return;
-  const pw = await auth.hashPassword('demo1234');
-  const add = (email, name, extra = {}) => {
-    const { id } = db.run('INSERT INTO users (email, name, password_hash, is_demo, created_at) VALUES (?, ?, ?, 1, ?)', email, name, pw, now());
-    db.update('users', id, extra);
-    return id;
-  };
-  const medina = DAKAR[1];
-  const awa = add('awa@demo.kaaraange.sn', 'Awa Couture (démo)', {
-    shop_name: 'Awa Couture — boutique de démonstration',
-    shop_lat: medina.lat,
-    shop_lng: medina.lng,
-    shop_address: 'Médina, Dakar (adresse fictive)',
-    phone: '+221 70 000 00 01',
-  });
-  add('fatou@demo.kaaraange.sn', 'Fatou Ndiaye (démo)', { phone: '+221 70 000 00 02' });
-  const moussa = add('moussa@demo.kaaraange.sn', 'Moussa Sarr (démo)', { phone: '+221 70 000 00 03' });
-  dispatch.ensureCourier(moussa);
-  const articles = [
-    ['Robe wax ndokette', 'Exemple d’article : robe en wax cousue main, taille au choix.', 25_000],
-    ['Ensemble bazin brodé', 'Exemple d’article : bazin riche brodé, livré plié sous housse.', 60_000],
-    ['Sac en cuir tressé', 'Exemple d’article : sac artisanal en cuir tressé.', 35_000],
-  ];
-  for (const [title, description, sats] of articles) {
-    db.run('INSERT INTO articles (seller_id, title, description, price_sat, created_at) VALUES (?, ?, ?, ?, ?)', awa, title, description, sats, now());
-  }
-  console.log('Comptes de démonstration créés (mot de passe : demo1234) : awa@, fatou@, moussa@demo.kaaraange.sn');
-}
+const { seedDemo } = require('./demo');
 
 /* ---------- Application ---------- */
 
@@ -103,7 +73,7 @@ async function createServer({ loops = true } = {}) {
 
   app.use('/api/nodes', chain.gateway);
   app.use('/api', auth.loadUser);
-  app.use('/api', auth.router, orders.router, dispatch.router, chain.router, admin.router);
+  app.use('/api', auth.router, require('./article-routes').router, orders.router, dispatch.router, chain.router, admin.router);
   app.use('/api', (_req, res) => res.status(404).json({ error: 'Route introuvable.' }));
 
   app.use('/uploads', express.static(config.uploadDir, { maxAge: '7d', fallthrough: false, index: false }));
