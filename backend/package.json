@@ -7,7 +7,13 @@
   "scripts": {
     "start": "node --experimental-sqlite --no-warnings=ExperimentalWarning src/server.js",
     "dev": "node --watch --experimental-sqlite --no-warnings=ExperimentalWarning src/server.js",
-    "test": "node --experimental-sqlite --no-warnings=ExperimentalWarning --test-reporter=spec test/flow.test.js"
+    "test": "node --experimental-sqlite --no-warnings=ExperimentalWarning --test --test-reporter=spec test/flow.test.js test/features.test.js test/real-adapter.test.js test/bitcoin-rpc.test.js",
+    "test:polar": "node --experimental-sqlite --no-warnings=ExperimentalWarning test/polar-validation.test.js",
+    "demo:prepare": "node --experimental-sqlite --no-warnings=ExperimentalWarning scripts/prepare-demo.js",
+    "demo:scenarios": "node --experimental-sqlite --no-warnings=ExperimentalWarning scripts/demo-scenarios.js",
+    "demo:simulate": "node --experimental-sqlite --no-warnings=ExperimentalWarning scripts/start-simulation.js",
+    "test:polar:smoke": "node --experimental-sqlite --no-warnings=ExperimentalWarning test/polar.test.js",
+    "test:bitcoin:polar": "node --experimental-sqlite --no-warnings=ExperimentalWarning test/bitcoin-polar.test.js"
   },
   "engines": {
     "node": ">=22"

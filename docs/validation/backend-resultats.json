@@ -1,0 +1,177 @@
+{
+  "project": "Kaaraange Pay",
+  "scope": "Backend du prototype regtest",
+  "backend": {
+    "passed": 47,
+    "command": "npm test"
+  },
+  "lightning": {
+    "completed": true,
+    "passed": 23,
+    "date": "2026-11-19T23:44:51.029Z",
+    "checks": [
+      {
+        "name": "préflight : regtest, bons conteneurs, trois nœuds synchronisés et aucun HTLC préexistant",
+        "passed": true,
+        "duration_ms": 1384
+      },
+      {
+        "name": "livraison : CLTV explicite, deux holds réels, faux code refusé puis A+B réglées",
+        "passed": true,
+        "duration_ms": 1247
+      },
+      {
+        "name": "refus non_conforme : retour, livreur payé et livraison remboursée par Awa",
+        "passed": true,
+        "duration_ms": 1480
+      },
+      {
+        "name": "refus endommage : retour, livreur payé et livraison remboursée par Awa",
+        "passed": true,
+        "duration_ms": 1525
+      },
+      {
+        "name": "refus change_avis : retour, livreur payé et livraison remboursée par Awa",
+        "passed": true,
+        "duration_ms": 1093
+      },
+      {
+        "name": "refus autre : retour, livreur payé et livraison remboursée par Awa",
+        "passed": true,
+        "duration_ms": 1245
+      },
+      {
+        "name": "client absent : proximité obligatoire, retour payé sans remboursement vendeur",
+        "passed": true,
+        "duration_ms": 1175
+      },
+      {
+        "name": "remboursement volontaire vendeur avant retrait : A+B annulées",
+        "passed": true,
+        "duration_ms": 1548
+      },
+      {
+        "name": "retour demandé par vendeur après retrait : livraison à sa charge",
+        "passed": true,
+        "duration_ms": 1454
+      },
+      {
+        "name": "aucun livreur : échéance puis remboursement intégral",
+        "passed": true,
+        "duration_ms": 1363
+      },
+      {
+        "name": "non-présentation : annulation et pénalité opérationnelle unique",
+        "passed": true,
+        "duration_ms": 2218
+      },
+      {
+        "name": "abandon avant retrait : autre livreur affecté sans réémettre les paiements",
+        "passed": true,
+        "duration_ms": 2302
+      },
+      {
+        "name": "abandon après retrait : article annulé, retour obligatoire puis livreur payé",
+        "passed": true,
+        "duration_ms": 1801
+      },
+      {
+        "name": "retour en retard : alerte admin, motif obligatoire et arbitrage payé",
+        "passed": true,
+        "duration_ms": 1976
+      },
+      {
+        "name": "arbitrage d’annulation des frais : motif conservé, aucun paiement livreur",
+        "passed": true,
+        "duration_ms": 1882
+      },
+      {
+        "name": "factures jamais payées : expiration et annulation des deux OPEN",
+        "passed": true,
+        "duration_ms": 231
+      },
+      {
+        "name": "nœud Awa figé : santé dégradée, annulation en attente puis reprise confirmée",
+        "passed": true,
+        "duration_ms": 7118
+      },
+      {
+        "name": "nœud Moussa figé entre A et B : article réglé, livraison en attente puis reprise",
+        "passed": true,
+        "duration_ms": 4136
+      },
+      {
+        "name": "arrêt brutal du processus entre A et B : reprise par un nouveau processus",
+        "passed": true,
+        "duration_ms": 3182
+      },
+      {
+        "name": "Awa indisponible pendant remboursement : facture persistée et reprise sans double débit",
+        "passed": true,
+        "duration_ms": 7736
+      },
+      {
+        "name": "liquidité Awa insuffisante réelle : remboursement en attente puis succès après déblocage",
+        "passed": true,
+        "duration_ms": 2378
+      },
+      {
+        "name": "double paiement et réception/refus concurrents : un seul résultat financier",
+        "passed": true,
+        "duration_ms": 3008
+      },
+      {
+        "name": "état final Lightning : aucune opération ni HTLC restant, canaux actifs",
+        "passed": true,
+        "duration_ms": 54
+      }
+    ]
+  },
+  "bitcoin": {
+    "completed": true,
+    "passed": 4,
+    "date": "2026-11-19T23:48:44.345Z",
+    "checks": [
+      "création de deux portefeuilles Core dédiés et adresses bech32",
+      "minage de 101 blocs : maturité coinbase et UTXO dépensables",
+      "envoi exact, mempool et confirmation dans l’explorateur",
+      "les trois LND rejoignent la nouvelle hauteur sans perdre les canaux"
+    ]
+  },
+  "final_state": {
+    "date": "2026-11-19T23:52:19.223Z",
+    "health": "ok",
+    "chain": "regtest",
+    "height": 318,
+    "nodes": [
+      {
+        "id": "fatou",
+        "reachable": true,
+        "block_height": 318,
+        "channels_active": true,
+        "htlc_held_sat": 0
+      },
+      {
+        "id": "awa",
+        "reachable": true,
+        "block_height": 318,
+        "channels_active": true,
+        "htlc_held_sat": 0
+      },
+      {
+        "id": "moussa",
+        "reachable": true,
+        "block_height": 318,
+        "channels_active": true,
+        "htlc_held_sat": 0
+      }
+    ],
+    "main_orders_preserved": [
+      {
+        "status": "delivered",
+        "n": 1
+      }
+    ],
+    "pending_actions": 0
+  }
+}

@@ -249,16 +249,17 @@ class RpcChain {
     this.lastHeight = 0;
   }
 
-  async rpc(method, params = [], wallet = null) {
+  async rpc(method, params = [], wallet = null, timeoutMs = 15000) {
     let res;
     try {
       res = await fetch(wallet ? `${this.url}/wallet/${encodeURIComponent(wallet)}` : this.url, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: this.auth },
         body: JSON.stringify({ jsonrpc: '1.0', id: 'kaaraange', method, params }),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
-    } catch {
+    } catch (error) {
+      if (['TimeoutError', 'AbortError'].includes(error.name)) throw new HttpError(504, 'Bitcoin Core n’a pas confirmé la réponse dans le délai prévu. L’opération peut encore aboutir : vérifiez son état avant de la relancer.');
       throw new HttpError(502, 'bitcoind injoignable : vérifiez BTC_RPC_URL et que Polar est démarré.');
     }
     if (res.status === 401) throw new HttpError(502, 'bitcoind refuse l’accès : vérifiez BTC_RPC_USER et BTC_RPC_PASS.');
@@ -375,7 +376,7 @@ class RpcChain {
     const info = await this.rpc('getblockchaininfo');
     if (info.chain !== 'regtest') throw new HttpError(400, 'Le minage n’est possible qu’en regtest.');
     const address = await this.newAddress(name);
-    const hashes = await this.rpc('generatetoaddress', [n, address]);
+    const hashes = await this.rpc('generatetoaddress', [n, address], null, config.btcMineTimeoutMs);
     return { address, hashes };
   }
 

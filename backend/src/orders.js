@@ -18,10 +18,12 @@ const ln = require('./lightning');
 const price = require('./price');
 const v = require('./util');
 const { requireAuth, publicUser, ratingsOf } = require('./auth');
+const actions = require('./order-actions');
+const { incident, serviceRating } = require('./courier-metrics');
 const { fail, now, haversine, sha256hex, randomHex, isHex64, round } = v;
 
 const IN_ESCROW = ['searching_courier', 'assigned', 'picked_up'];
-const OPEN_STATUSES = ['awaiting_payment', ...IN_ESCROW, 'returning'];
+const OPEN_STATUSES = ['awaiting_payment', ...IN_ESCROW, 'returning', ...Object.values(actions.pendingStatus)];
 const REFUSE_REASONS = {
   non_conforme: 'Produit non conforme',
   endommage: 'Colis endommagé',
@@ -29,6 +31,9 @@ const REFUSE_REASONS = {
   autre: 'Autre motif',
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const refundsInFlight = new Map();
+const paymentsInFlight = new Map();
+const sellerOwesFee = o => ['refus', 'vendeur'].includes(o.return_cause);
 const dispatch = () => require('./dispatch'); // import différé (dépendance circulaire)
 
 /* ---------- Lecture ---------- */
@@ -45,11 +50,15 @@ function brief(u, withPhone) {
 
 function articleView(a, viewer) {
   const s = getUser(a.seller_id);
+  const rating = db.one('SELECT AVG(rating) avg, COUNT(*) count FROM product_reviews WHERE article_id = ?', a.id);
   return {
     id: a.id,
     title: a.title,
     description: a.description,
     price_sat: a.price_sat,
+    image_url: a.image ? `/uploads/${a.image}` : null,
+    rating: { avg: rating.avg == null ? null : round(rating.avg, 1), count: rating.count },
+    public_path: `/produit/${a.id}`,
     is_active: !!a.is_active,
     removed_reason: a.removed_reason || null,
     created_at: a.created_at,
@@ -74,8 +83,10 @@ function view(o, viewer) {
   const courierPos = o.courier_id ? db.one('SELECT lat, lng, mode, location_at FROM couriers WHERE user_id = ?', o.courier_id) : null;
 
   const mine = db.all('SELECT role, rating FROM reviews WHERE order_id = ? AND author_id = ?', o.id, viewer.id);
-  const myReviews = { vendeur: null, livreur: null, client: null };
+  const myReviews = { vendeur: null, livreur: null, client: null, produit: null };
   for (const r of mine) myReviews[r.role] = r.rating;
+  myReviews.produit = db.one('SELECT rating FROM product_reviews WHERE order_id = ? AND buyer_id = ?', o.id, viewer.id)?.rating ?? null;
+  const operation = db.one('SELECT kind, error FROM order_actions WHERE order_id = ?', o.id);
 
   return {
     id: o.id,
@@ -97,6 +108,7 @@ function view(o, viewer) {
       ? {
           ...brief(courierUser, live && (isBuyer || isSeller || viewer.is_admin)),
           rating: ratingsOf(courierUser.id).livreur,
+          service: serviceRating(courierUser.id),
           position: courierPos && courierPos.lat != null ? { lat: courierPos.lat, lng: courierPos.lng, mode: courierPos.mode, at: courierPos.location_at } : null,
         }
       : null,
@@ -111,8 +123,15 @@ function view(o, viewer) {
     refuse_comment: o.refuse_comment,
     cancel_reason: o.cancel_reason,
     fee_refunded_at: o.fee_refunded_at,
+    fee_refund_status: o.fee_refunded_at ? 'completed' : sellerOwesFee(o) && o.status === 'returned' && o.fee_state === 'SETTLED' ? 'pending' : sellerOwesFee(o) && o.status === 'returning' ? 'awaiting_return' : 'not_applicable',
+    fee_refund_error: o.fee_refund_error || null,
     invoice_expires_at: o.invoice_expires_at,
     deadline_at: o.deadline_at,
+    return_deadline_at: o.return_deadline_at,
+    return_overdue: o.status === 'returning' && !!o.return_deadline_at && o.return_deadline_at < now(),
+    financial_pending: !!operation,
+    financial_error: operation?.error || null,
+    financial_action: operation?.kind || null,
     created_at: o.created_at,
     paid_at: o.paid_at,
     assigned_at: o.assigned_at,
@@ -123,6 +142,7 @@ function view(o, viewer) {
     canceled_at: o.canceled_at,
     my_reviews: myReviews,
     can_review: {
+      produit: isBuyer && o.status === 'delivered' && o.item_state === 'SETTLED' && myReviews.produit == null,
       vendeur: isBuyer && o.status === 'delivered' && myReviews.vendeur == null,
       livreur: isBuyer && !!o.courier_id && ['delivered', 'returning', 'returned'].includes(o.status) && myReviews.livreur == null,
       client: isCourier && ['delivered', 'returning', 'returned'].includes(o.status) && myReviews.client == null,
@@ -148,69 +168,31 @@ async function safeState(node, hash) {
 }
 
 async function cancelInvoice(node, hash) {
-  try {
-    await node.cancel(hash);
-  } catch {
-    /* déjà annulée, déjà réglée ou expirée : rien à faire */
+  try { await node.cancel(hash); } catch (error) {
+    if ((await node.lookup(hash)).state !== 'CANCELED') throw error;
   }
+  if ((await node.lookup(hash)).state !== 'CANCELED') throw new Error('Annulation Lightning en attente.');
 }
 
-/** Annule A et B : tout ce qui était bloqué revient à l'acheteur. */
-async function cancelBoth(o) {
-  await cancelInvoice(ln.vendeur, o.item_hash);
-  await cancelInvoice(ln.livreur, o.fee_hash);
-}
-
-/**
- * Relit l'état LND des deux factures et fait avancer la commande :
- * A et B en ACCEPTED → recherche d'un livreur ; une facture expirée → annulation.
- */
 async function refresh(o) {
   if (!o || !OPEN_STATUSES.includes(o.status)) return o;
-  const [a, b] = await Promise.all([safeState(ln.vendeur, o.item_hash), safeState(ln.livreur, o.fee_hash)]);
-  const fields = {};
-  if (a && a !== o.item_state) fields.item_state = a;
-  if (b && b !== o.fee_state) fields.fee_state = b;
-  const sa = a || o.item_state;
-  const sb = b || o.fee_state;
-  const fresh = getOrder(o.id);
-  if (fresh.status === 'awaiting_payment') {
-    if (sa === 'ACCEPTED' && sb === 'ACCEPTED') {
-      Object.assign(fields, { status: 'searching_courier', paid_at: now(), deadline_at: now() + config.deadlineMin * 60, pay_error: null });
-      db.audit(o.buyer_id, 'commande.paiement', `order:${o.id}`, { item_sat: o.item_sat, fee_sat: o.fee_sat });
-    } else if (sa === 'CANCELED' || sb === 'CANCELED') {
-      await cancelBoth(o);
-      Object.assign(fields, {
-        status: 'canceled',
-        canceled_at: now(),
-        cancel_reason: 'facture_expiree',
-        item_state: (await safeState(ln.vendeur, o.item_hash)) || 'CANCELED',
-        fee_state: (await safeState(ln.livreur, o.fee_hash)) || 'CANCELED',
-      });
-      db.audit(null, 'commande.annulation_auto', `order:${o.id}`, { motif: 'facture expirée avant paiement complet' });
-    }
-  }
-  if (Object.keys(fields).length) db.update('orders', o.id, fields);
-  return getOrder(o.id);
-}
-
-async function syncStates(o) {
-  const [a, b] = await Promise.all([safeState(ln.vendeur, o.item_hash), safeState(ln.livreur, o.fee_hash)]);
-  const fields = {};
-  if (a) fields.item_state = a;
-  if (b) fields.fee_state = b;
-  db.update('orders', o.id, fields);
-}
-
-/** Annulation complète (délai dépassé, remboursement admin…). */
-async function cancelOrder(o, reason, actorId, action) {
-  await cancelBoth(o);
-  db.update('orders', o.id, { status: 'canceled', canceled_at: now(), cancel_reason: reason });
+  if (db.one('SELECT order_id FROM order_actions WHERE order_id = ?', o.id)) return getOrder(o.id);
   await syncStates(o);
-  if (o.courier_id) dispatch().freeCourier(o.courier_id, o.id);
-  db.run("UPDATE offers SET status = 'canceled', responded_at = ? WHERE order_id = ? AND status = 'pending'", now(), o.id);
-  db.audit(actorId, action, `order:${o.id}`, { motif: reason });
+  o = getOrder(o.id);
+  if (o.status !== 'awaiting_payment') return o;
+  if (o.item_state === 'ACCEPTED' && o.fee_state === 'ACCEPTED') {
+    db.update('orders', o.id, { status: 'searching_courier', paid_at: now(), deadline_at: now() + config.deadlineMin * 60, pay_error: null });
+    db.audit(o.buyer_id, 'commande.paiement', 'order:' + o.id, { item_sat: o.item_sat, fee_sat: o.fee_sat });
+  } else if (o.item_state === 'CANCELED' || o.fee_state === 'CANCELED') {
+    return cancelOrder(o, 'facture_expiree', null, 'commande.annulation_auto');
+  }
   return getOrder(o.id);
+}
+
+async function syncStates(o) { await actions.sync(o); }
+
+async function cancelOrder(o, reason, actorId, audit) {
+  return actions.schedule(o, 'cancel', { reason, audit, no_show: reason === 'delai_depasse' && o.status === 'assigned' && !!o.courier_id }, actorId);
 }
 
 /* ---------- Devis ---------- */
@@ -243,24 +225,23 @@ function activeArticle(id) {
 /* ---------- Échéances (boucle toutes les 2 s) ---------- */
 
 async function tick() {
+  await actions.recover();
+  db.run("UPDATE orders SET return_deadline_at = COALESCE(returning_at, created_at) + ? WHERE status = 'returning' AND return_deadline_at IS NULL", config.returnDeadlineMin * 60);
   for (const o of db.all("SELECT * FROM orders WHERE status = 'awaiting_payment'")) {
     const r = await refresh(o);
-    if (r.status === 'awaiting_payment' && r.invoice_expires_at < now() - 5) {
-      await cancelOrder(r, 'facture_expiree', null, 'commande.annulation_auto');
-    }
+    if (r.status === 'awaiting_payment' && r.invoice_expires_at < now() - 5) await cancelOrder(r, 'facture_expiree', null, 'commande.annulation_auto');
   }
-  for (const o of db.all(`SELECT * FROM orders WHERE status IN ('searching_courier','assigned','picked_up') AND deadline_at < ?`, now())) {
+  for (const o of db.all("SELECT * FROM orders WHERE status IN ('searching_courier','assigned','picked_up') AND deadline_at < ?", now())) {
     await cancelOrder(o, 'delai_depasse', null, 'commande.remboursement_auto');
   }
-  // Livraison confirmée mais facture B pas encore réglée (nœud livreur momentanément injoignable) : on réessaie.
-  for (const o of db.all("SELECT * FROM orders WHERE fee_state = 'ACCEPTED' AND (status = 'delivered' OR (status = 'returned' AND returned_at IS NOT NULL AND cancel_reason IS NULL))")) {
-    try {
-      await ln.livreur.settle(o.fee_preimage);
-      await syncStates(o);
-    } catch {
-      /* nouvel essai au prochain tour */
-    }
+  for (const o of db.all("SELECT * FROM orders WHERE status = 'returning' AND return_deadline_at < ?", now())) {
+    incident(o.id, o.courier_id, 'late_return', 'Retour non confirmé dans le délai prévu');
+    await syncStates(o);
   }
+  for (const o of db.all("SELECT * FROM orders WHERE fee_state = 'ACCEPTED' AND (status = 'delivered' OR (status = 'returned' AND cancel_reason IS NULL))")) {
+    try { await ln.livreur.settle(o.fee_preimage); await syncStates(o); } catch {}
+  }
+  for (const o of db.all("SELECT * FROM orders WHERE status = 'returned' AND return_cause IN ('refus','vendeur') AND fee_state = 'SETTLED' AND fee_refunded_at IS NULL AND (fee_refund_attempt_at IS NULL OR fee_refund_attempt_at <= ?)", now() - 30)) await refundFee(o);
 }
 
 /* ---------- Opérations admin (utilisées par admin.js) ---------- */
@@ -270,30 +251,66 @@ async function adminRefund(o, reason, adminId) {
   return cancelOrder(o, `admin : ${reason}`, adminId, 'admin.remboursement_total');
 }
 
-async function adminFee(o, action, adminId) {
+async function adminFee(o, action, adminId, reason) {
   if (o.status !== 'returning') fail(409, 'Action possible uniquement pour un colis en retour.');
-  if (action === 'pay') await ln.call(ln.livreur.settle(o.fee_preimage));
-  else if (action === 'cancel') await ln.call(ln.livreur.cancel(o.fee_hash));
-  else fail(400, 'Action inconnue : « pay » ou « cancel » attendu.', 'action');
-  db.update('orders', o.id, { status: 'returned', returned_at: now() });
-  await syncStates(o);
-  dispatch().freeCourier(o.courier_id, o.id);
-  db.audit(adminId, action === 'pay' ? 'admin.frais_payes_livreur' : 'admin.frais_annules', `order:${o.id}`, { fee_sat: o.fee_sat });
+  if (!['pay', 'cancel'].includes(action)) fail(400, 'Action inconnue : pay ou cancel attendu.', 'action');
+  reason = v.text(reason, { field: 'reason', label: 'Le motif', min: 3, max: 200, required: true });
+  const result = await actions.schedule(o, action === 'pay' ? 'return_complete' : 'cancel_fee', { audit: action === 'pay' ? 'admin.frais_payes_livreur' : 'admin.frais_annules', reason }, adminId);
+  if (result.status === 'returned' && sellerOwesFee(result) && result.fee_state === 'SETTLED') await refundFee(result);
   return getOrder(o.id);
 }
 
-/** Option A : le vendeur rembourse les frais au client (facture créée par alice, payée par bob). */
+/** Facture persistée avant paiement : reprise sans double débit après interruption. */
+function refundFee(o, actorId = null) {
+  if (refundsInFlight.has(o.id)) return refundsInFlight.get(o.id);
+  const work = (async () => {
+    let current = getOrder(o.id);
+    if (current.fee_refunded_at || !sellerOwesFee(current) || current.status !== 'returned' || current.fee_state !== 'SETTLED') return { order: current };
+    db.update('orders', o.id, { fee_refund_attempt_at: now() });
+    try {
+      if (current.fee_refund_hash) {
+        const previous = await ln.acheteur.lookup(current.fee_refund_hash);
+        const expired = previous.state === 'OPEN' && current.fee_refund_request && Date.parse((await ln.acheteur.decode(current.fee_refund_request)).expires_at) <= Date.now();
+        if (previous.state === 'CANCELED' || expired || (previous.state === 'OPEN' && !current.fee_refund_request)) {
+          if (previous.state !== 'CANCELED') {
+            await ln.acheteur.cancel(current.fee_refund_hash);
+            if ((await ln.acheteur.lookup(current.fee_refund_hash)).state !== 'CANCELED') throw new Error('Annulation de la facture expirée en attente.');
+          }
+          db.update('orders', o.id, { fee_refund_hash: null, fee_refund_request: null });
+          current = getOrder(o.id);
+        }
+      }
+      if (!current.fee_refund_hash) {
+        const inv = await ln.acheteur.addInvoice(current.fee_sat, `Kaaraange · remboursement des frais #${o.id}`);
+        db.update('orders', o.id, { fee_refund_hash: inv.id, fee_refund_request: inv.request });
+        current = getOrder(o.id);
+      }
+      let receipt = await ln.acheteur.lookup(current.fee_refund_hash);
+      if (receipt.state !== 'SETTLED') {
+        if (receipt.state === 'CANCELED') throw new Error('Facture de remboursement annulée : intervention requise.');
+        if (!current.fee_refund_request) throw new Error('Facture de remboursement manquante : intervention requise.');
+        await ln.vendeur.paySync(current.fee_refund_request);
+        receipt = await ln.acheteur.lookup(current.fee_refund_hash);
+      }
+      if (receipt.state !== 'SETTLED') throw new Error('Remboursement en attente de confirmation.');
+      db.update('orders', o.id, { fee_refunded_at: now(), fee_refund_error: null });
+      db.audit(actorId, 'commande.frais_rembourses_par_vendeur', `order:${o.id}`, { fee_sat: current.fee_sat, hash: current.fee_refund_hash });
+    } catch (e) {
+      db.update('orders', o.id, { fee_refund_error: v.lnError(e).message });
+    }
+    return { order: getOrder(o.id) };
+  })().finally(() => refundsInFlight.delete(o.id));
+  refundsInFlight.set(o.id, work);
+  return work;
+}
+
 async function adminRefundFee(o, adminId) {
-  if (o.return_cause !== 'refus' || !['non_conforme', 'endommage'].includes(o.refuse_reason)) {
-    fail(409, 'Remboursement des frais par le vendeur réservé aux colis refusés pour non-conformité ou dommage.');
-  }
+  if (!sellerOwesFee(o)) fail(409, 'Remboursement des frais réservé aux colis refusés.');
   if (o.status !== 'returned' || o.fee_state !== 'SETTLED') fail(409, "Le livreur doit d'abord avoir été payé (retour confirmé).");
   if (o.fee_refunded_at) fail(409, 'Les frais ont déjà été remboursés.');
-  const inv = await ln.call(ln.acheteur.addInvoice(o.fee_sat, `Kaaraange · remboursement des frais #${o.id}`));
-  const pay = await ln.call(ln.vendeur.paySync(inv.request));
-  db.update('orders', o.id, { fee_refund_hash: inv.id, fee_refunded_at: now() });
-  db.audit(adminId, 'admin.frais_rembourses_par_vendeur', `order:${o.id}`, { fee_sat: o.fee_sat, route: pay.route });
-  return { order: getOrder(o.id), payment: { id: pay.id, route: pay.route, fee: pay.fee } };
+  const result = await refundFee(o, adminId);
+  if (!result.order.fee_refunded_at) fail(502, 'Remboursement en attente : nouvelle tentative automatique. Vérifiez la liquidité du vendeur.');
+  return result;
 }
 
 /* ---------- Routes ---------- */
@@ -396,32 +413,35 @@ router.get('/orders/:id', async (req, res) => {
 /** Paiement de démonstration : le serveur pilote le nœud acheteur (alice). */
 router.post('/orders/:id/pay', async (req, res) => {
   let o = loadForUser(req, req.params.id);
-  if (o.buyer_id !== req.user.id) fail(403, "Seul l'acheteur peut payer cette commande.");
-  o = await refresh(o);
-  if (o.status !== 'awaiting_payment') fail(409, 'Cette commande est déjà payée ou close.');
-
-  const errors = {};
-  // Une hold invoice reste « en vol » jusqu'au settle/cancel : on n'attend pas ln.pay.
-  const launch = (key, request) =>
-    ln.acheteur.payAsync(request, (err) => {
-      if (err) errors[key] = v.lnError(err).message;
-    });
-  if (o.item_state === 'OPEN') launch('item', o.item_request);
-  if (o.fee_state === 'OPEN') launch('fee', o.fee_request);
-
-  const until = Date.now() + 15000;
-  for (;;) {
-    await sleep(100);
-    o = await refresh(getOrder(o.id));
-    if (o.status !== 'awaiting_payment' || errors.item || errors.fee || Date.now() > until) break;
+  if (o.buyer_id !== req.user.id) fail(403, 'Seul l’acheteur peut payer cette commande.');
+  if (!paymentsInFlight.has(o.id)) {
+    o = await refresh(o);
+    if (!paymentsInFlight.has(o.id)) {
+      if (o.status !== 'awaiting_payment') fail(409, 'Cette commande est déjà payée ou close.');
+      const work = (async () => {
+        const errors = {};
+        const launch = (key, request) => ln.acheteur.payAsync(request, err => { if (err) errors[key] = v.lnError(err).message; });
+        if (o.item_state === 'OPEN') launch('item', o.item_request);
+        if (o.fee_state === 'OPEN') launch('fee', o.fee_request);
+        const until = Date.now() + 15000;
+        let current;
+        do {
+          await sleep(100);
+          current = await refresh(getOrder(o.id));
+        } while (current.status === 'awaiting_payment' && !errors.item && !errors.fee && Date.now() < until);
+        if (current.status === 'awaiting_payment' && (errors.item || errors.fee)) {
+          const message = errors.item || errors.fee;
+          db.update('orders', o.id, { pay_error: message });
+          const result = await cancelOrder(getOrder(o.id), 'paiement_echoue', req.user.id, 'commande.paiement_echoue');
+          fail(502, message + (result.status === 'canceled' ? ' Les deux factures sont annulées.' : ' Annulation en attente de confirmation Lightning.'));
+        }
+        return current;
+      })().finally(() => paymentsInFlight.delete(o.id));
+      paymentsInFlight.set(o.id, work);
+    }
   }
-  if (o.status === 'awaiting_payment' && (errors.item || errors.fee)) {
-    const msg = errors.item || errors.fee;
-    db.update('orders', o.id, { pay_error: msg });
-    await cancelOrder(getOrder(o.id), 'paiement_echoue', req.user.id, 'commande.paiement_echoue');
-    fail(502, `${msg} Les deux factures ont été annulées : aucun fonds n'est resté bloqué.`);
-  }
-  res.json({ order: view(o, req.user) });
+  const order = view(await paymentsInFlight.get(o.id), req.user);
+  res.status(order.status === 'awaiting_payment' || order.financial_pending ? 202 : 200).json({ order });
 });
 
 router.post('/orders/:id/cancel', async (req, res) => {
@@ -430,7 +450,8 @@ router.post('/orders/:id/cancel', async (req, res) => {
   o = await refresh(o);
   if (o.status !== 'awaiting_payment') fail(409, "Annulation possible uniquement avant le paiement. Une fois payé, le remboursement est automatique en cas de problème.");
   o = await cancelOrder(o, o.buyer_id === req.user.id ? 'annulee_par_acheteur' : 'annulee_par_vendeur', req.user.id, 'commande.annulation');
-  res.json({ order: view(o, req.user) });
+  const order = view(o, req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
 });
 
 function courierPosition(userId) {
@@ -456,70 +477,81 @@ router.post('/orders/:id/pickup', (req, res) => {
 /** Un seul scan, deux paiements : settle(A) avec le code du client, puis settle(B). */
 router.post('/orders/:id/deliver', async (req, res) => {
   const o = loadForUser(req, req.params.id);
-  const byCourier = o.courier_id === req.user.id;
-  const byBuyer = o.buyer_id === req.user.id;
-  if (!byCourier && !byBuyer) fail(403, 'Seuls le livreur et le client peuvent valider la remise.');
-  if (o.status !== 'picked_up') fail(409, "Le colis n'est pas en cours de livraison.");
+  if (o.courier_id !== req.user.id && o.buyer_id !== req.user.id) fail(403, 'Seuls le livreur et le client peuvent valider la remise.');
+  if (!['picked_up', 'delivery_pending', 'delivered'].includes(o.status)) fail(409, 'Le colis ne peut pas être remis à cette étape.');
   const code = String((req.body || {}).code || '').trim().toLowerCase().replace(/^kaaraange:/, '').replace(/\s+/g, '');
   if (!isHex64(code)) fail(400, 'Code de livraison invalide : 64 caractères hexadécimaux attendus.', 'code');
   if (sha256hex(Buffer.from(code, 'hex')) !== o.item_hash) {
-    db.audit(req.user.id, 'livraison.code_incorrect', `order:${o.id}`, null, req.ip);
-    fail(400, 'Code de livraison incorrect : il ne correspond pas à la facture de cet article.', 'code');
+    db.audit(req.user.id, 'livraison.code_incorrect', 'order:' + o.id, null, req.ip);
+    fail(400, 'Code de livraison incorrect.', 'code');
   }
-  await ln.call(ln.vendeur.settle(code));
-  let feeError = null;
-  try {
-    await ln.livreur.settle(o.fee_preimage);
-  } catch (e) {
-    feeError = v.lnError(e).message; // nouvel essai automatique dans la boucle
-  }
-  db.update('orders', o.id, { status: 'delivered', delivered_at: now() });
-  await syncStates(o);
-  dispatch().freeCourier(o.courier_id, o.id);
-  db.audit(req.user.id, 'commande.livree', `order:${o.id}`, { par: byCourier ? 'livreur' : 'acheteur', item_sat: o.item_sat, fee_sat: o.fee_sat, fee_error: feeError }, req.ip);
-  res.json({ order: view(getOrder(o.id), req.user) });
+  const result = o.status === 'delivered' ? o : await actions.schedule(o, 'deliver', { secret: code, audit: 'commande.livree' }, req.user.id);
+  const order = view(result, req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
 });
 
 router.post('/orders/:id/refuse', async (req, res) => {
   const o = loadForUser(req, req.params.id);
   if (o.buyer_id !== req.user.id) fail(403, 'Seul le client peut refuser le colis.');
-  if (o.status !== 'picked_up') fail(409, 'Le refus est possible uniquement quand le livreur a le colis en main.');
+  if (o.status !== 'picked_up') fail(409, 'Le refus est possible uniquement pendant la livraison.');
   const b = req.body || {};
   if (!REFUSE_REASONS[b.reason]) fail(400, 'Choisissez un motif de refus.', 'reason');
   const comment = v.text(b.comment, { field: 'comment', label: 'Le commentaire', max: 300 });
-  await ln.call(ln.vendeur.cancel(o.item_hash)); // le prix revient à l'acheteur, B reste bloquée
-  db.update('orders', o.id, { status: 'returning', returning_at: now(), return_cause: 'refus', refuse_reason: b.reason, refuse_comment: comment });
-  await syncStates(o);
-  db.audit(req.user.id, 'commande.refus', `order:${o.id}`, { motif: b.reason }, req.ip);
-  res.json({ order: view(getOrder(o.id), req.user) });
+  const result = await actions.schedule(o, 'return', { cause: 'refus', refuse_reason: b.reason, comment, audit: 'commande.refus' }, req.user.id);
+  const order = view(result, req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
 });
 
 router.post('/orders/:id/absent', async (req, res) => {
   const o = loadForUser(req, req.params.id);
-  if (o.courier_id !== req.user.id) fail(403, 'Seul le livreur de la course peut déclarer le client absent.');
-  if (o.status !== 'picked_up') fail(409, "Le colis n'est pas en cours de livraison.");
+  if (o.courier_id !== req.user.id) fail(403, 'Seul le livreur peut déclarer le client absent.');
+  if (o.status !== 'picked_up') fail(409, 'Le colis ne peut pas être déclaré absent à cette étape.');
   const c = courierPosition(req.user.id);
-  const d = haversine(c.lat, c.lng, o.delivery_lat, o.delivery_lng);
-  if (d > config.absentRadiusKm) {
-    fail(400, `Vous êtes à ${d.toFixed(2).replace('.', ',')} km du point de livraison : présentez-vous sur place avant de déclarer le client absent.`, 'position');
-  }
-  await ln.call(ln.vendeur.cancel(o.item_hash));
-  db.update('orders', o.id, { status: 'returning', returning_at: now(), return_cause: 'absent' });
-  await syncStates(o);
-  db.audit(req.user.id, 'commande.client_absent', `order:${o.id}`, { distance_km: round(d, 3) }, req.ip);
-  res.json({ order: view(getOrder(o.id), req.user) });
+  if (haversine(c.lat, c.lng, o.delivery_lat, o.delivery_lng) > config.absentRadiusKm) fail(400, 'Présentez-vous au point de livraison avant de déclarer une absence.', 'position');
+  const result = await actions.schedule(o, 'return', { cause: 'absent', audit: 'commande.client_absent' }, req.user.id);
+  const order = view(result, req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
 });
 
 router.post('/orders/:id/confirm-return', async (req, res) => {
   const o = loadForUser(req, req.params.id);
-  if (o.seller_id !== req.user.id) fail(403, 'Seul le vendeur peut confirmer le retour du colis.');
-  if (o.status !== 'returning') fail(409, "Aucun retour en cours pour cette commande.");
-  await ln.call(ln.livreur.settle(o.fee_preimage)); // le livreur est payé pour son déplacement
-  db.update('orders', o.id, { status: 'returned', returned_at: now() });
-  await syncStates(o);
-  dispatch().freeCourier(o.courier_id, o.id);
-  db.audit(req.user.id, 'commande.retour_confirme', `order:${o.id}`, { fee_sat: o.fee_sat }, req.ip);
-  res.json({ order: view(getOrder(o.id), req.user) });
+  if (o.seller_id !== req.user.id) fail(403, 'Seul le vendeur peut confirmer le retour.');
+  if (!['returning', 'return_payment_pending', 'returned'].includes(o.status)) fail(409, 'Aucun retour en cours pour cette commande.');
+  const result = o.status === 'returned' ? o : await actions.schedule(o, 'return_complete', { audit: 'commande.retour_confirme' }, req.user.id);
+  if (result.status === 'returned' && sellerOwesFee(result)) await refundFee(result);
+  const order = view(getOrder(o.id), req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
+});
+
+router.post('/orders/:id/refund', async (req, res) => {
+  const o = loadForUser(req, req.params.id);
+  if (o.seller_id !== req.user.id) fail(403, 'Seul le vendeur peut rembourser cette commande.');
+  const reason = v.text((req.body || {}).reason, { field: 'reason', label: 'Le motif', min: 3, max: 300, required: true });
+  let result;
+  if (['awaiting_payment', 'searching_courier', 'assigned'].includes(o.status)) result = await cancelOrder(o, 'vendeur : ' + reason, req.user.id, 'vendeur.remboursement');
+  else if (o.status === 'picked_up') result = await actions.schedule(o, 'return', { cause: 'vendeur', reason, comment: reason, audit: 'vendeur.retour_demande' }, req.user.id);
+  else fail(409, 'Remboursement indisponible à cette étape.');
+  const order = view(result, req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
+});
+
+router.post('/orders/:id/abandon', async (req, res) => {
+  const o = loadForUser(req, req.params.id);
+  if (o.courier_id !== req.user.id) fail(403, 'Seul le livreur affecté peut abandonner cette course.');
+  if (!['assigned', 'picked_up'].includes(o.status)) fail(409, 'Cette course ne peut pas être abandonnée à cette étape.');
+  const reason = v.text((req.body || {}).reason, { field: 'reason', label: 'Le motif', min: 3, max: 300, required: true });
+  incident(o.id, req.user.id, 'abandon', reason);
+  if (o.status === 'assigned') {
+    db.tx(() => {
+      db.run("UPDATE couriers SET status = 'offline', current_order_id = NULL, updated_at = ? WHERE user_id = ?", now(), req.user.id);
+      db.update('orders', o.id, { status: 'searching_courier', courier_id: null, assigned_at: null });
+      db.audit(req.user.id, 'livreur.abandon_avant_retrait', 'order:' + o.id, { reason });
+    });
+  } else {
+    await actions.schedule(o, 'return', { cause: 'abandon', reason, comment: reason, audit: 'livreur.abandon_apres_retrait' }, req.user.id);
+  }
+  const order = view(getOrder(o.id), req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
 });
 
 router.post('/orders/:id/review', (req, res) => {
@@ -528,6 +560,14 @@ router.post('/orders/:id/review', (req, res) => {
   const target = String(b.target || '');
   const rating = v.intIn(b.rating, { field: 'rating', label: 'La note', min: 1, max: 5 });
   const comment = v.text(b.comment, { field: 'comment', label: 'Le commentaire', max: 500 });
+  if (target === 'produit') {
+    if (o.buyer_id !== req.user.id) fail(403, 'Seul l’acheteur peut noter le produit.');
+    if (o.status !== 'delivered' || o.item_state !== 'SETTLED') fail(400, 'Un achat livré et payé est requis pour noter le produit.');
+    if (db.one('SELECT id FROM product_reviews WHERE order_id = ? AND buyer_id = ?', o.id, req.user.id)) fail(409, 'Vous avez déjà noté ce produit pour cette commande.');
+    db.run('INSERT INTO product_reviews (order_id, article_id, buyer_id, rating, comment, created_at) VALUES (?, ?, ?, ?, ?, ?)', o.id, o.article_id, req.user.id, rating, comment, now());
+    db.audit(req.user.id, 'avis.produit', `article:${o.article_id}`, { order_id: o.id, rating });
+    return res.status(201).json({ ok: true, order: view(getOrder(o.id), req.user) });
+  }
   let targetId;
   if (target === 'vendeur') {
     if (o.buyer_id !== req.user.id) fail(403, "Seul l'acheteur peut noter le vendeur.");
@@ -556,15 +596,13 @@ router.get('/stats', (req, res) => {
   const sum = (sql, ...p) => db.one(sql, ...p).s || 0;
   const esc = IN_ESCROW.map((s) => `'${s}'`).join(',');
   const stats = {
-    locked_sat:
-      sum(`SELECT SUM(item_sat + fee_sat) s FROM orders WHERE buyer_id = ? AND status IN (${esc})`, id) +
-      sum("SELECT SUM(fee_sat) s FROM orders WHERE buyer_id = ? AND status = 'returning'", id),
-    incoming_seller_sat: sum(`SELECT SUM(item_sat) s FROM orders WHERE seller_id = ? AND status IN (${esc})`, id),
+    locked_sat: sum("SELECT SUM(CASE WHEN item_state = 'ACCEPTED' THEN item_sat ELSE 0 END + CASE WHEN fee_state = 'ACCEPTED' THEN fee_sat ELSE 0 END) s FROM orders WHERE buyer_id = ?", id),
+    incoming_seller_sat: sum("SELECT SUM(item_sat) s FROM orders WHERE seller_id = ? AND item_state = 'ACCEPTED'", id),
     earned_seller_sat: sum("SELECT SUM(item_sat) s FROM orders WHERE seller_id = ? AND status = 'delivered' AND item_state = 'SETTLED'", id),
     courier_earned_sat: sum("SELECT SUM(fee_sat) s FROM orders WHERE courier_id = ? AND fee_state = 'SETTLED'", id),
     spent_sat:
       sum("SELECT SUM(item_sat + fee_sat) s FROM orders WHERE buyer_id = ? AND status = 'delivered'", id) +
-      sum("SELECT SUM(fee_sat) s FROM orders WHERE buyer_id = ? AND status = 'returned' AND fee_state = 'SETTLED'", id),
+      sum("SELECT SUM(fee_sat) s FROM orders WHERE buyer_id = ? AND status = 'returned' AND fee_state = 'SETTLED' AND fee_refunded_at IS NULL", id),
     refunded_sat:
       sum("SELECT SUM(item_sat + fee_sat) s FROM orders WHERE buyer_id = ? AND status = 'canceled' AND paid_at IS NOT NULL", id) +
       sum("SELECT SUM(item_sat) s FROM orders WHERE buyer_id = ? AND status IN ('returning','returned')", id) +

@@ -8,6 +8,7 @@
  * (is_held / is_confirmed / is_canceled).
  */
 const ln = require('ln-service');
+const config = require('../config');
 
 const toState = (inv) => (inv.is_confirmed ? 'SETTLED' : inv.is_canceled ? 'CANCELED' : inv.is_held ? 'ACCEPTED' : 'OPEN');
 
@@ -52,9 +53,10 @@ function realNode(cfg) {
       const [chain, chans, pending] = await Promise.all([
         ln.getChainBalance({ lnd }),
         ln.getChannels({ lnd }),
-        ln.getPayments({ lnd, limit: 50 }).catch(() => ({ payments: [] })),
+        ln.getPendingPayments({ lnd }),
       ]);
-      const inFlight = (pending.payments || []).filter((p) => p.is_pending).reduce((s, p) => s + p.tokens + (p.fee || 0), 0);
+      const inFlight = pending.payments.reduce((s, p) => s + p.tokens +
+        (p.attempts || []).filter(a => a.is_pending).reduce((fee, a) => fee + (a.route.fee || 0), 0), 0);
       return {
         onchain_sat: chain.chain_balance,
         offchain_local_sat: chans.channels.reduce((s, c) => s + c.local_balance, 0),
@@ -96,6 +98,7 @@ function realNode(cfg) {
         id: hash,
         tokens: sats,
         description: memo || '',
+        cltv_delta: config.holdCltvDelta,
         expires_at: new Date(Date.now() + expirySec * 1000).toISOString(),
       });
       return { id: inv.id || hash, request: inv.request, tokens: sats };
@@ -140,7 +143,7 @@ function realNode(cfg) {
 
     async paySync(bolt11) {
       const own = await ln.getWalletInfo({ lnd });
-      const r = await ln.pay({ lnd, request: String(bolt11 || '').trim() });
+      const r = await ln.pay({ lnd, request: String(bolt11 || '').trim(), pathfinding_timeout: config.lndPathfindingMs });
       const hops = await Promise.all(
         (r.hops || []).map(async (h) => ({ channel: h.channel, public_key: h.public_key, alias: (await aliasOf(h.public_key)) || h.public_key.slice(0, 12), forward: h.forward, fee: h.fee })),
       );
@@ -153,29 +156,43 @@ function realNode(cfg) {
      * l'appelant quand la facture a été annulée volontairement).
      */
     payAsync(bolt11, cb = () => {}) {
-      ln.pay({ lnd, request: String(bolt11 || '').trim() }).then(
+      ln.pay({ lnd, request: String(bolt11 || '').trim(), pathfinding_timeout: config.lndPathfindingMs }).then(
         (r) => cb(null, r),
         (e) => cb(e),
       );
     },
 
     async history() {
-      const [inv, pay] = await Promise.all([ln.getInvoices({ lnd, limit: 30 }), ln.getPayments({ lnd, limit: 30 })]);
+      // getPayments omet les paiements en cours et échoués dans LND.
+      const [inv, confirmed, pending, failed] = await Promise.all([
+        ln.getInvoices({ lnd, limit: 30 }),
+        ln.getPayments({ lnd, limit: 30 }),
+        ln.getPendingPayments({ lnd, limit: 30 }),
+        ln.getFailedPayments({ lnd, limit: 30 }),
+      ]);
+      // La bibliothèque expose is_pending sur les tentatives, pas sur le paiement.
+      const byStatus = [
+        ...failed.payments.map(p => ({ ...p, status: 'FAILED' })),
+        ...pending.payments.map(p => ({ ...p, status: 'IN_FLIGHT' })),
+        ...confirmed.payments.map(p => ({ ...p, status: 'SUCCEEDED' })),
+      ];
+      const payments = [...new Map(byStatus.map(p => [p.id, p])).values()]
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))).slice(0, 30);
       return {
         invoices: inv.invoices.map((i) => ({
           id: i.id,
           tokens: i.tokens,
           description: i.description,
           state: toState(i),
-          is_hold: false,
+          is_hold: !!i.is_held,
           created_at: i.created_at,
           request: i.request,
         })),
-        payments: pay.payments.map((p) => ({
+        payments: payments.map((p) => ({
           id: p.id,
           tokens: p.tokens,
           fee: p.fee,
-          status: p.is_confirmed ? 'SUCCEEDED' : p.is_pending ? 'IN_FLIGHT' : 'FAILED',
+          status: p.status,
           route: (p.hops || []).slice(),
           description: '',
           created_at: p.created_at,
@@ -193,6 +210,18 @@ function realNode(cfg) {
       }
     },
   };
+  // Un LND figé ne doit pas immobiliser la boucle de reprise ni l’API.
+  // Un dépassement ne prouve pas un échec financier : la même facture sera
+  // relue à la reprise. payAsync reste ouvert pendant le blocage des HTLC.
+  for (const key of Object.keys(node)) {
+    if (typeof node[key] !== 'function' || key === 'payAsync') continue;
+    const call = node[key].bind(node);
+    node[key] = (...args) => new Promise((resolve, reject) => {
+      const message = `Nœud ${cfg.id} : confirmation Lightning indisponible dans le délai prévu`;
+      const timeout = setTimeout(() => key === 'health' ? resolve({ reachable: false, error: message }) : reject([503, message]), key === 'paySync' ? config.lndPaymentTimeoutMs : config.lndRpcTimeoutMs);
+      Promise.resolve().then(() => call(...args)).then(resolve, reject).finally(() => clearTimeout(timeout));
+    });
+  }
   return node;
 }
 

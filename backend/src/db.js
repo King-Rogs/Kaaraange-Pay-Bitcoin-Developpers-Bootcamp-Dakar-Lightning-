@@ -99,6 +99,9 @@ CREATE TABLE IF NOT EXISTS orders (
   returned_at INTEGER,
   canceled_at INTEGER,
   fee_refund_hash TEXT,
+  fee_refund_request TEXT,
+  fee_refund_error TEXT,
+  fee_refund_attempt_at INTEGER,
   fee_refunded_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
@@ -147,6 +150,38 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 CREATE INDEX IF NOT EXISTS idx_reviews_target ON reviews(target_id, role);
 
+CREATE TABLE IF NOT EXISTS product_reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  article_id INTEGER NOT NULL REFERENCES articles(id),
+  buyer_id INTEGER NOT NULL REFERENCES users(id),
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+  comment TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  UNIQUE(order_id, buyer_id)
+);
+CREATE INDEX IF NOT EXISTS idx_product_reviews_article ON product_reviews(article_id);
+
+CREATE TABLE IF NOT EXISTS courier_incidents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  courier_id INTEGER NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  UNIQUE(order_id, courier_id, kind)
+);
+
+CREATE TABLE IF NOT EXISTS order_actions (
+  order_id INTEGER PRIMARY KEY REFERENCES orders(id),
+  kind TEXT NOT NULL,
+  details TEXT NOT NULL,
+  actor_id INTEGER,
+  created_at INTEGER NOT NULL,
+  attempted_at INTEGER,
+  error TEXT
+);
+
 CREATE TABLE IF NOT EXISTS audit (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   at INTEGER NOT NULL,
@@ -174,6 +209,13 @@ function open(file) {
   db = new DatabaseSync(file);
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
   db.exec(SCHEMA);
+  for (const [table, fields] of Object.entries({
+    orders: [['fee_refund_request', 'TEXT'], ['fee_refund_error', 'TEXT'], ['fee_refund_attempt_at', 'INTEGER'], ['return_deadline_at', 'INTEGER']],
+    articles: [['image', 'TEXT']],
+  })) {
+    const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));
+    for (const [name, type] of fields) if (!columns.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+  }
   return db;
 }
 

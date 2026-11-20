@@ -15,9 +15,12 @@ const v = require('./util');
 const { requireAdmin, publicUser, ratingsOf } = require('./auth');
 const { nodeSnapshot } = require('./chain');
 const { fail, now } = v;
+const { alerts } = require('./alerts');
+const { serviceRating } = require('./courier-metrics');
 
 const router = express.Router();
 router.use('/admin', requireAdmin);
+router.get('/admin/alerts', (_req, res) => res.json({ alerts: alerts() }));
 
 const DAY = 86400;
 const esc = orders.IN_ESCROW.map((s) => `'${s}'`).join(',');
@@ -41,6 +44,7 @@ router.get('/admin/stats', (_req, res) => {
   }
 
   res.json({
+    alerts: alerts(),
     users: {
       total: db.one('SELECT COUNT(*) n FROM users WHERE is_bot = 0').n,
       active_7d: db.one('SELECT COUNT(*) n FROM users WHERE is_bot = 0 AND last_seen_at >= ?', t - 7 * DAY).n,
@@ -53,7 +57,7 @@ router.get('/admin/stats', (_req, res) => {
       busy: db.one("SELECT COUNT(*) n FROM couriers WHERE status = 'busy'").n,
     },
     orders: { total: db.one('SELECT COUNT(*) n FROM orders').n, by_status: byStatus },
-    locked_sat: sum(`SELECT SUM(item_sat + fee_sat) s FROM orders WHERE status IN (${esc})`) + sum("SELECT SUM(fee_sat) s FROM orders WHERE status = 'returning'"),
+    locked_sat: sum("SELECT SUM(CASE WHEN item_state = 'ACCEPTED' THEN item_sat ELSE 0 END + CASE WHEN fee_state = 'ACCEPTED' THEN fee_sat ELSE 0 END) s FROM orders"),
     paid_sellers_sat: sum("SELECT SUM(item_sat) s FROM orders WHERE status = 'delivered' AND item_state = 'SETTLED'"),
     paid_couriers_sat: sum("SELECT SUM(fee_sat) s FROM orders WHERE fee_state = 'SETTLED'"),
     returns_in_progress: byStatus.returning || 0,
@@ -87,6 +91,7 @@ function userRows(q) {
     created_at: u.created_at,
     last_seen_at: u.last_seen_at,
     ratings: ratingsOf(u.id),
+    courier_service: serviceRating(u.id),
     sales: u.sales,
     purchases: u.purchases,
     refusals: u.refusals,
@@ -161,12 +166,14 @@ function adminOrder(id) {
 router.post('/admin/orders/:id/refund', async (req, res) => {
   const reason = v.text((req.body || {}).reason, { field: 'reason', label: 'Le motif', min: 3, max: 200, required: true });
   const o = await orders.adminRefund(await orders.refresh(adminOrder(req.params.id)), reason, req.user.id);
-  res.json({ order: orders.view(o, req.user) });
+  const order = orders.view(o, req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
 });
 
 router.post('/admin/orders/:id/fee', async (req, res) => {
-  const o = await orders.adminFee(adminOrder(req.params.id), String((req.body || {}).action || ''), req.user.id);
-  res.json({ order: orders.view(o, req.user) });
+  const o = await orders.adminFee(adminOrder(req.params.id), String((req.body || {}).action || ''), req.user.id, (req.body || {}).reason);
+  const order = orders.view(o, req.user);
+  res.status(order.financial_pending ? 202 : 200).json({ order });
 });
 
 router.post('/admin/orders/:id/refund-fee', async (req, res) => {
@@ -215,6 +222,10 @@ router.get('/admin/system', async (_req, res) => {
       FEE_BASE_XOF: config.feeBaseXof,
       FEE_PER_KM_XOF: config.feePerKmXof,
       DEADLINE_MIN: config.deadlineMin,
+      RETURN_DEADLINE_MIN: config.returnDeadlineMin,
+      HOLD_CLTV_DELTA: config.holdCltvDelta,
+      RECOVERY_RETRY_SEC: config.recoveryRetrySec,
+      LOW_RATING_THRESHOLD: config.lowRatingThreshold,
       INVOICE_EXPIRY_MIN: config.invoiceExpiryMin,
       PICKUP_RADIUS_KM: config.pickupRadiusKm,
       ABSENT_RADIUS_KM: config.absentRadiusKm,
