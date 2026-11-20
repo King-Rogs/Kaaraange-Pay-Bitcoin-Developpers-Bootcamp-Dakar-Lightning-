@@ -7,7 +7,7 @@ import { Avatar, Button, EmptyState, Field, StatusBadge } from '../../components
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { api, ApiError, type Article, type Order } from '../../lib/api'
-import { int } from '../../lib/format'
+import { btc, int } from '../../lib/format'
 import { useConversions } from '../../lib/market'
 import { usePoll } from '../../lib/usePoll'
 import { PageHeader } from './AppLayout'
@@ -135,7 +135,7 @@ export default function Shop() {
             placeholder="25000"
             error={errors.price_sat}
             trailing={<span className="text-sm font-semibold text-btc-ink">sats</span>}
-            hint={xof != null && form.price ? `≈ ${int(xof)} FCFA au cours actuel` : 'Le prix est fixé en satoshis.'}
+            hint={form.price ? `${btc(Number(form.price))} BTC${xof != null ? ` · ≈ ${int(xof)} FCFA au cours actuel` : ''}` : 'Le prix est fixé en satoshis.'}
           />
           <Button type="submit" loading={busy}>
             <Plus className="h-4 w-4" /> Mettre en vente

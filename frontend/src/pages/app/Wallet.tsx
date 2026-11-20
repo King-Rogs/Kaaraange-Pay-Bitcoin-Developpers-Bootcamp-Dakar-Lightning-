@@ -7,7 +7,7 @@ import { Mono, SectionCard } from '../../components/Tech'
 import { Button, cx, EmptyState, Field } from '../../components/ui'
 import { useToast } from '../../context/ToastContext'
 import { api, ApiError, type Wallet as W, type WalletTx } from '../../lib/api'
-import { dateTime } from '../../lib/format'
+import { btc, dateTime } from '../../lib/format'
 import { usePoll } from '../../lib/usePoll'
 import { PageHeader } from './AppLayout'
 
@@ -170,6 +170,7 @@ function TxRow({ t }: { t: WalletTx }) {
       <td className={cx('py-3.5 pr-4 font-semibold tabular', t.amount_sat < 0 ? 'text-danger' : 'text-fg')}>
         {t.amount_sat > 0 ? '+' : ''}
         {t.amount_sat.toLocaleString('fr-FR')} sats
+        <span className="block text-xs font-normal text-muted">{btc(Math.abs(t.amount_sat))} BTC</span>
         {t.fee_sat ? <span className="block text-xs font-normal text-muted">frais {Math.abs(t.fee_sat).toLocaleString('fr-FR')}</span> : null}
       </td>
       <td className="py-3.5 pr-4">
@@ -213,7 +214,16 @@ function SendCard({ onSent }: { onSent: () => void }) {
     <form onSubmit={submit}>
       <SectionCard title="Envoyer" icon={<Send />} className="h-full">
         <Field label="Adresse du destinataire" value={address} onChange={(e) => setAddress(e.target.value.trim())} placeholder="bcrt1q…" error={errors.address} className="[&_input]:font-mono [&_input]:text-sm" spellCheck={false} />
-        <Field label="Montant" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))} placeholder="50000" error={errors.amount} trailing={<span className="text-sm font-semibold text-btc-ink">sats</span>} />
+        <Field
+          label="Montant"
+          inputMode="numeric"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/\D/g, ''))}
+          placeholder="50000"
+          error={errors.amount}
+          trailing={<span className="text-sm font-semibold text-btc-ink">sats</span>}
+          hint={amount ? `${btc(Number(amount))} BTC` : undefined}
+        />
         <Button type="submit" loading={busy} disabled={!address || !amount}>
           <Send className="h-4 w-4" /> Envoyer
         </Button>

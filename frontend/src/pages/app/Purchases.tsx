@@ -208,7 +208,8 @@ function InvoiceBlock({ label, inv }: { label: string; inv: Order['invoices']['i
         <span className="font-semibold">{label}</span>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${cls}`}>{inv.state}</span>
       </div>
-      <p className="text-sm text-muted">Nœud {inv.node} · {inv.sats.toLocaleString('fr-FR')} sats</p>
+      <p className="text-xs text-muted">Nœud {inv.node}</p>
+      <Amount value={inv.sats} />
       <Mono value={inv.hash} label="le payment_hash" />
     </div>
   )
