@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bike, Check, Clock, MapPin, Navigation, Package, Power, Satellite, ScanLine, UserX, Wallet, X } from 'lucide-react'
+import { Bike, Check, Clock, LogOut, MapPin, Navigation, Package, Power, Satellite, ScanLine, UserX, Wallet, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Amount } from '../../components/Amount'
 import { FleetMap, TrackMap } from '../../components/Maps'
@@ -83,7 +83,9 @@ export default function Courier() {
           </span>
           <div>
             <p className="font-semibold">{data.courier.status === 'busy' ? 'En course' : online ? 'En ligne, disponible' : 'Hors ligne'}</p>
-            <p className="text-xs text-muted">{data.courier.offers_accepted}/{data.courier.offers_received} offres acceptées · fiabilité {Math.round(data.courier.acceptance_rate * 100)} %</p>
+            <p className="text-xs text-muted">
+              {data.courier.offers_accepted}/{data.courier.offers_received} offres acceptées · fiabilité {Math.round(data.courier.acceptance_rate * 100)} % · note de service {data.courier.service.score}/5
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -204,6 +206,7 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
   const [busy, setBusy] = useState<string | null>(null)
   const [code, setCode] = useState('')
   const [absentOpen, setAbsentOpen] = useState(false)
+  const [abandonOpen, setAbandonOpen] = useState(false)
   if (!order) return null
 
   async function run(action: string, fn: () => Promise<unknown>, okMsg?: string) {
@@ -233,9 +236,14 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
       <TrackMap shop={order.shop} delivery={order.delivery} courier={order.courier?.position} />
 
       {order.status === 'assigned' && (
-        <Button loading={busy === 'pickup'} onClick={() => run('pickup', () => api(`/api/orders/${order.id}/pickup`, { method: 'POST' }), 'Colis récupéré')}>
-          <Check className="h-4 w-4" /> Colis récupéré (à moins de {radius.pickup} km de la boutique)
-        </Button>
+        <div className="flex flex-col gap-3">
+          <Button loading={busy === 'pickup'} onClick={() => run('pickup', () => api(`/api/orders/${order.id}/pickup`, { method: 'POST' }), 'Colis récupéré')}>
+            <Check className="h-4 w-4" /> Colis récupéré (à moins de {radius.pickup} km de la boutique)
+          </Button>
+          <Button variant="ghost" className="text-danger hover:bg-danger-soft" onClick={() => setAbandonOpen(true)}>
+            <LogOut className="h-4 w-4" /> Abandonner cette course
+          </Button>
+        </div>
       )}
 
       {order.status === 'picked_up' && (
@@ -256,12 +264,17 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
               <UserX className="h-4 w-4" /> Client absent
             </Button>
           </div>
+          <Button variant="ghost" className="text-danger hover:bg-danger-soft" onClick={() => setAbandonOpen(true)}>
+            <LogOut className="h-4 w-4" /> Abandonner (retour obligatoire)
+          </Button>
         </div>
       )}
 
-      {order.status === 'returning' && <p className="rounded-xl bg-subtle px-4 py-3 text-sm text-muted">Ramenez le colis à la boutique. Les frais vous seront versés à la confirmation du vendeur.</p>}
+      {order.status === 'delivery_pending' && <p className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">Remise enregistrée, confirmation du paiement en cours.</p>}
+      {['returning', 'return_pending'].includes(order.status) && <p className="rounded-xl bg-subtle px-4 py-3 text-sm text-muted">Ramenez le colis à la boutique. Les frais vous seront versés à la confirmation du vendeur.</p>}
+      {order.status === 'return_payment_pending' && <p className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">Retour confirmé : paiement de vos frais en cours de confirmation.</p>}
 
-      {['delivered', 'returning', 'returned'].includes(order.status) && (
+      {['delivered', 'returning', 'return_pending', 'returned', 'return_payment_pending'].includes(order.status) && (
         <div className="rounded-xl border border-line p-4">
           <p className="mb-2 text-sm font-semibold">Votre avis sur le client</p>
           <ReviewBox order={order} target="client" label={order.buyer?.name ?? 'le client'} canReview={order.can_review.client} mine={order.my_reviews.client} onChange={onChange} />
@@ -284,6 +297,47 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
           </motion.div>
         )}
       </AnimatePresence>
+      <AnimatePresence>{abandonOpen && <AbandonModal order={order} onClose={() => setAbandonOpen(false)} onDone={onChange} />}</AnimatePresence>
     </SectionCard>
+  )
+}
+
+function AbandonModal({ order, onClose, onDone }: { order: NonNullable<CourierMe['current']>; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const afterPickup = order.status === 'picked_up'
+
+  async function submit() {
+    if (!reason) return
+    setBusy(true)
+    try {
+      await api(`/api/orders/${order.id}/abandon`, { body: { reason } })
+      toast(afterPickup ? 'Course abandonnée : vous devez rapporter le colis à la boutique' : 'Course abandonnée : réattribuée à un autre livreur')
+      onDone()
+      onClose()
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : 'Erreur', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onClose}>
+      <motion.div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-2xl bg-surface p-6">
+        <h3 className="text-lg font-bold">Abandonner cette course</h3>
+        <p className="mt-1 text-sm text-muted">
+          {afterPickup
+            ? 'Le colis est déjà récupéré : vous devrez le rapporter à la boutique avant d’être payé. Cet incident est compté dans votre note de service.'
+            : 'La course sera réattribuée à un autre livreur, sans aucun mouvement financier. Cet incident est compté dans votre note de service.'}
+        </p>
+        <Field label="Motif (obligatoire)" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Panne, imprévu…" className="mt-4" />
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <Button variant="secondary" onClick={onClose}>Annuler</Button>
+          <Button variant="danger" loading={busy} disabled={!reason} onClick={submit}>Confirmer l’abandon</Button>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }

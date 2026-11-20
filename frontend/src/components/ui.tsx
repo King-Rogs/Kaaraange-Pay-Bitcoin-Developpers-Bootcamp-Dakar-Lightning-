@@ -105,7 +105,7 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
   )
 })
 
-const STATUS: Record<OrderStatus, { label: string; cls: string }> = {
+const STATUS: Record<OrderStatus, { label: string; cls: string; pulse?: boolean }> = {
   awaiting_payment: { label: 'En attente de paiement', cls: 'bg-subtle text-muted' },
   searching_courier: { label: 'Recherche d’un livreur', cls: 'bg-warn-soft text-warn' },
   assigned: { label: 'Livreur en route', cls: 'bg-warn-soft text-warn' },
@@ -114,13 +114,19 @@ const STATUS: Record<OrderStatus, { label: string; cls: string }> = {
   returning: { label: 'Retour en cours', cls: 'bg-danger-soft text-danger' },
   returned: { label: 'Retourné', cls: 'bg-danger-soft text-danger' },
   canceled: { label: 'Remboursé', cls: 'bg-danger-soft text-danger' },
+  // États transitoires : une opération financière est enregistrée, la confirmation LND est en
+  // cours (reprise automatique côté serveur). Jamais présentés comme un échec.
+  cancel_pending: { label: 'Annulation en cours', cls: 'bg-warn-soft text-warn', pulse: true },
+  delivery_pending: { label: 'Règlement en cours', cls: 'bg-warn-soft text-warn', pulse: true },
+  return_pending: { label: 'Retour en préparation', cls: 'bg-warn-soft text-warn', pulse: true },
+  return_payment_pending: { label: 'Retour : confirmation en cours', cls: 'bg-warn-soft text-warn', pulse: true },
 }
 
 export function StatusBadge({ status }: { status: OrderStatus }) {
-  const s = STATUS[status]
+  const s = STATUS[status] ?? { label: status, cls: 'bg-subtle text-muted' }
   return (
     <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold', s.cls)}>
-      <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden />
+      <span className={cx('h-1.5 w-1.5 rounded-full bg-current', s.pulse && 'animate-pulseDot')} aria-hidden />
       {s.label}
     </span>
   )

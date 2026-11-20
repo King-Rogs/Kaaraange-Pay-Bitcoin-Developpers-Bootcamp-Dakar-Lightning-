@@ -20,8 +20,11 @@ const STEPS = [
   { key: 'picked_up', label: 'Colis en livraison' },
   { key: 'delivered', label: 'Livré' },
 ]
+// 'delivery_pending' : la remise a été enregistrée, la confirmation Lightning est en cours —
+// on la montre comme « Livré » en attente plutôt que de masquer le suivi.
 const stepIndex = (o: Order) => {
-  if (['returning', 'returned', 'canceled'].includes(o.status)) return -1
+  if (['returning', 'return_pending', 'returned', 'return_payment_pending', 'canceled', 'cancel_pending'].includes(o.status)) return -1
+  if (o.status === 'delivery_pending') return STEPS.length - 1
   return STEPS.findIndex((s) => s.key === o.status)
 }
 
@@ -62,19 +65,23 @@ export default function Purchases() {
 function Tracker({ order }: { order: Order }) {
   const idx = stepIndex(order)
   if (idx < 0) return null
+  const pendingLast = order.status === 'delivery_pending'
   return (
     <div className="flex items-center">
-      {STEPS.map((s, i) => (
-        <div key={s.key} className="flex flex-1 items-center last:flex-none">
-          <div className="flex flex-col items-center gap-1.5 text-center">
-            <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${i <= idx ? 'bg-brand text-brand-fg' : 'border-2 border-line text-muted'}`}>
-              {i < idx ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="text-xs font-bold">{i + 1}</span>}
-            </span>
-            <span className={`max-w-[80px] text-[11px] leading-tight ${i <= idx ? 'font-semibold' : 'text-muted'}`}>{s.label}</span>
+      {STEPS.map((s, i) => {
+        const isLastPending = pendingLast && i === idx
+        return (
+          <div key={s.key} className="flex flex-1 items-center last:flex-none">
+            <div className="flex flex-col items-center gap-1.5 text-center">
+              <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${isLastPending ? 'bg-warn-soft text-warn' : i <= idx ? 'bg-brand text-brand-fg' : 'border-2 border-line text-muted'}`}>
+                {isLastPending ? <span className="h-2 w-2 animate-pulseDot rounded-full bg-current" /> : i < idx ? <Check className="h-4 w-4" strokeWidth={3} /> : <span className="text-xs font-bold">{i + 1}</span>}
+              </span>
+              <span className={`max-w-[80px] text-[11px] leading-tight ${i <= idx ? 'font-semibold' : 'text-muted'}`}>{s.label}{isLastPending ? ' (en cours)' : ''}</span>
+            </div>
+            {i < STEPS.length - 1 && <span className={`mx-1 h-0.5 flex-1 rounded ${i < idx ? 'bg-brand' : 'bg-line'}`} />}
           </div>
-          {i < STEPS.length - 1 && <span className={`mx-1 h-0.5 flex-1 rounded ${i < idx ? 'bg-brand' : 'bg-line'}`} />}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -92,8 +99,8 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
     }
     setBusy('deliver')
     try {
-      await api(`/api/orders/${order.id}/deliver`, { body: { code } })
-      toast('Livraison confirmée : vendeur et livreur sont payés')
+      const r = await api<{ order: Order }>(`/api/orders/${order.id}/deliver`, { body: { code } })
+      toast(r.order.financial_pending ? 'Remise enregistrée : confirmation du paiement en cours' : 'Livraison confirmée : vendeur et livreur sont payés')
       onChange()
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Erreur', 'error')
@@ -111,16 +118,29 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
 
       <div className="card mb-6 p-6">
         <Tracker order={order} />
-        {order.status === 'returning' && (
+        {['returning', 'return_pending'].includes(order.status) && (
           <p className="mt-5 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">
-            Colis {order.return_cause === 'refus' ? `refusé (${order.refuse_reason_label})` : 'non remis (client absent)'} : le livreur rapporte le colis au vendeur. Le prix vous a été remboursé ; les frais de livraison restent dus au livreur.
+            Colis {order.return_cause === 'refus' ? `refusé (${order.refuse_reason_label})` : order.return_cause === 'vendeur' ? 'retourné à la demande du vendeur' : order.return_cause === 'abandon' ? 'non livré (livreur indisponible)' : 'non remis (client absent)'} : le livreur rapporte le colis au vendeur. Le prix vous a été remboursé ; les frais de livraison restent dus au livreur.
           </p>
         )}
-        {order.status === 'returned' && <p className="mt-5 rounded-xl bg-subtle px-4 py-3 text-sm text-muted">Colis retourné au vendeur. Le livreur a été payé pour son déplacement.</p>}
-        {order.status === 'canceled' && <p className="mt-5 rounded-xl bg-subtle px-4 py-3 text-sm text-muted">Commande annulée{order.cancel_reason ? ` (${order.cancel_reason.replace(/_/g, ' ')})` : ''} : tout ce qui était payé vous a été remboursé.</p>}
+        {['returned', 'return_payment_pending'].includes(order.status) && (
+          <p className="mt-5 rounded-xl bg-subtle px-4 py-3 text-sm text-muted">
+            Colis retourné au vendeur. Le livreur {order.status === 'return_payment_pending' ? 'est en cours de paiement' : 'a été payé'} pour son déplacement.
+            {order.fee_refund_status === 'completed' && ' Vos frais de livraison vous ont été remboursés par le vendeur.'}
+            {order.fee_refund_status === 'pending' && ' Le remboursement de vos frais de livraison par le vendeur est en cours.'}
+          </p>
+        )}
+        {['canceled', 'cancel_pending'].includes(order.status) && (
+          <p className="mt-5 rounded-xl bg-subtle px-4 py-3 text-sm text-muted">
+            {order.status === 'cancel_pending' ? 'Annulation en cours de confirmation' : 'Commande annulée'}{order.cancel_reason ? ` (${order.cancel_reason.replace(/_/g, ' ')})` : ''} : tout ce qui était payé vous {order.status === 'cancel_pending' ? 'sera' : 'a été'} remboursé.
+          </p>
+        )}
+        {order.financial_pending && !['cancel_pending', 'return_pending', 'return_payment_pending', 'delivery_pending'].includes(order.status) && (
+          <p className="mt-3 text-xs text-warn">Une confirmation Lightning est en cours ({order.financial_action}).</p>
+        )}
       </div>
 
-      {['assigned', 'picked_up'].includes(order.status) && order.courier && (
+      {['assigned', 'picked_up', 'delivery_pending'].includes(order.status) && order.courier && (
         <SectionCard title="Livreur en direct" icon={<Truck />} className="mb-6">
           <div className="flex items-center gap-3">
             <Avatar name={order.courier.name} url={order.courier.avatar_url} size={40} />
@@ -133,7 +153,7 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
         </SectionCard>
       )}
 
-      {['searching_courier', 'assigned', 'picked_up'].includes(order.status) && (
+      {['searching_courier', 'assigned', 'picked_up', 'delivery_pending'].includes(order.status) && (
         <SectionCard title="Code de livraison" icon={<QrCode />} className="mb-6">
           {code ? (
             <>
@@ -146,6 +166,7 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
           ) : (
             <p className="text-sm text-danger">Code introuvable sur cet appareil (navigateur différent ?) : demandez au livreur de passer par la confirmation du vendeur ou contactez l’administration.</p>
           )}
+          {order.status === 'delivery_pending' && <p className="text-sm text-warn">Remise enregistrée, confirmation Lightning en cours (quelques secondes).</p>}
           {order.status === 'picked_up' && (
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button className="flex-1" loading={busy === 'deliver'} disabled={!code} onClick={receive}>
@@ -160,7 +181,7 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
       )}
 
       {order.status === 'delivered' && <ReviewSection order={order} onChange={onChange} />}
-      {['returning', 'returned'].includes(order.status) && (
+      {['returning', 'return_pending', 'returned', 'return_payment_pending'].includes(order.status) && (
         <SectionCard title="Votre avis sur le livreur" icon={<Star />}>
           <ReviewBox order={order} target="livreur" label={order.courier?.name ?? 'le livreur'} canReview={order.can_review.livreur} mine={order.my_reviews.livreur} onChange={onChange} />
         </SectionCard>
@@ -240,6 +261,9 @@ function RefuseModal({ order, onClose, onDone }: { order: Order; onClose: () => 
 function ReviewSection({ order, onChange }: { order: Order; onChange: () => void }) {
   return (
     <div className="mb-6 grid gap-6 sm:grid-cols-2">
+      <SectionCard title="Votre avis sur l’article" icon={<Star />}>
+        <ReviewBox order={order} target="produit" label={order.title} canReview={order.can_review.produit} mine={order.my_reviews.produit} onChange={onChange} />
+      </SectionCard>
       <SectionCard title="Votre avis sur le vendeur" icon={<Star />}>
         <ReviewBox order={order} target="vendeur" label={order.seller?.shop_name || order.seller?.name || 'le vendeur'} canReview={order.can_review.vendeur} mine={order.my_reviews.vendeur} onChange={onChange} />
       </SectionCard>
@@ -252,7 +276,7 @@ function ReviewSection({ order, onChange }: { order: Order; onChange: () => void
   )
 }
 
-export function ReviewBox({ order, target, label, canReview, mine, onChange }: { order: Order; target: 'vendeur' | 'livreur' | 'client'; label: string; canReview: boolean; mine: number | null; onChange: () => void }) {
+export function ReviewBox({ order, target, label, canReview, mine, onChange }: { order: Order; target: 'vendeur' | 'livreur' | 'client' | 'produit'; label: string; canReview: boolean; mine: number | null; onChange: () => void }) {
   const toast = useToast()
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState('')

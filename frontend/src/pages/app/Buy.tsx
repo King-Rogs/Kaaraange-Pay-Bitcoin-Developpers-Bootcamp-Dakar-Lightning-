@@ -46,12 +46,21 @@ export default function Buy() {
               onClick={() => setPicked(a)}
               className="card flex flex-col gap-4 p-5 text-left transition hover:border-brand/40 hover:shadow-card"
             >
-              <div className="flex h-32 items-center justify-center rounded-xl bg-gradient-to-br from-brand-soft to-btc-soft text-4xl font-display font-bold text-brand/70">
-                {a.title.slice(0, 1).toUpperCase()}
-              </div>
+              {a.image_url ? (
+                <img src={a.image_url} alt="" className="h-32 w-full rounded-xl object-cover" />
+              ) : (
+                <div className="flex h-32 items-center justify-center rounded-xl bg-gradient-to-br from-brand-soft to-btc-soft text-4xl font-display font-bold text-brand/70">
+                  {a.title.slice(0, 1).toUpperCase()}
+                </div>
+              )}
               <div className="flex flex-col gap-1">
                 <span className="line-clamp-1 font-semibold">{a.title}</span>
                 {a.description && <span className="line-clamp-2 text-xs text-muted">{a.description}</span>}
+                {a.rating.count > 0 && (
+                  <span className="flex items-center gap-1 text-[11px] text-muted">
+                    <Star className="h-3 w-3 fill-warn text-warn" /> {a.rating.avg} ({a.rating.count} avis produit)
+                  </span>
+                )}
               </div>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -111,8 +120,8 @@ function OrderModal({ article, onClose }: { article: Article; onClose: () => voi
       const { preimage, hash } = await newDeliverySecret()
       const order = await api<{ order: { id: number } }>('/api/orders', { body: { article_id: article.id, lat: point.lat, lng: point.lng, address, item_hash: hash } })
       saveCode(String(order.order.id), preimage)
-      await api(`/api/orders/${order.order.id}/pay`, { method: 'POST' })
-      toast('Commande payée : fonds bloqués jusqu’à la livraison')
+      const paid = await api<{ order: { status: string; financial_pending: boolean } }>(`/api/orders/${order.order.id}/pay`, { method: 'POST' })
+      toast(paid.order.financial_pending ? 'Paiement envoyé : confirmation Lightning en cours' : 'Commande payée : fonds bloqués jusqu’à la livraison')
       nav('/app/achats')
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erreur inattendue')

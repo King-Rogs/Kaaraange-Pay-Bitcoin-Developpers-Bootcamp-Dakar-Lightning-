@@ -64,12 +64,17 @@ export type Article = {
   title: string
   description: string
   price_sat: number
+  image_url: string | null
+  rating: Rating
+  public_path: string
   is_active: boolean
   removed_reason: string | null
   created_at: number
   is_mine: boolean
   seller: PublicUser & { shop: Shop | null }
 }
+
+export type ProductReview = { id: number; rating: number; comment: string; created_at: number; author_name: string }
 
 export type Quote = {
   distance_km: number
@@ -93,11 +98,23 @@ export type OrderStatus =
   | 'returning'
   | 'returned'
   | 'canceled'
+  // États transitoires : une opération financière a été enregistrée mais pas encore confirmée par
+  // LND (ou Bitcoin Core). Le serveur réessaie tout seul ; l'interface doit afficher « en cours de
+  // confirmation », jamais un échec.
+  | 'cancel_pending'
+  | 'delivery_pending'
+  | 'return_pending'
+  | 'return_payment_pending'
+
+/** `true` tant qu'une intention financière est enregistrée mais pas encore confirmée par LND. */
+export const isPendingStatus = (s: OrderStatus) => s.endsWith('_pending')
 
 export type InvoiceState = 'OPEN' | 'ACCEPTED' | 'SETTLED' | 'CANCELED'
 export type Invoice = { label: string; node: string; hash: string; request: string; state: InvoiceState; sats: number }
 
 export type CourierPosition = { lat: number; lng: number; mode: 'gps' | 'sim'; at: number | null }
+export type ServiceRating = { score: number; missed_deliveries: number; abandonments: number; late_returns: number; reviews_count: number }
+export type FeeRefundStatus = 'awaiting_return' | 'pending' | 'completed' | 'not_applicable'
 
 export type Order = {
   id: number
@@ -115,17 +132,27 @@ export type Order = {
   delivery: { lat: number; lng: number; address: string }
   buyer: PublicUser | null
   seller: PublicUser | null
-  courier: (PublicUser & { rating: Rating; position: CourierPosition | null }) | null
+  courier: (PublicUser & { rating: Rating; service: ServiceRating; position: CourierPosition | null }) | null
   invoices: { item: Invoice; fee: Invoice }
   pay_error: string | null
-  return_cause: 'refus' | 'absent' | null
+  return_cause: 'refus' | 'absent' | 'vendeur' | 'abandon' | null
   refuse_reason: string | null
   refuse_reason_label: string | null
   refuse_comment: string | null
   cancel_reason: string | null
   fee_refunded_at: number | null
+  fee_refund_status: FeeRefundStatus
+  fee_refund_error: string | null
+  // Une opération financière (règlement, annulation, remboursement) est enregistrée mais la
+  // confirmation LND/Bitcoin Core est encore en attente ; `financial_action` nomme l'opération en
+  // cours (ex. "deliver", "return_complete"), `financial_error` le dernier incident de confirmation.
+  financial_pending: boolean
+  financial_action: string | null
+  financial_error: string | null
   invoice_expires_at: number
   deadline_at: number | null
+  return_deadline_at: number | null
+  return_overdue: boolean
   created_at: number
   paid_at: number | null
   assigned_at: number | null
@@ -134,8 +161,8 @@ export type Order = {
   returning_at: number | null
   returned_at: number | null
   canceled_at: number | null
-  my_reviews: { vendeur: number | null; livreur: number | null; client: number | null }
-  can_review: { vendeur: boolean; livreur: boolean; client: boolean }
+  my_reviews: { vendeur: number | null; livreur: number | null; client: number | null; produit: number | null }
+  can_review: { vendeur: boolean; livreur: boolean; client: boolean; produit: boolean }
 }
 
 export type MoneyStats = { count: number; sats: number }
@@ -178,6 +205,7 @@ export type Courier = {
   offers_accepted: number
   acceptance_rate: number
   rating: Rating
+  service: ServiceRating
 }
 
 export type Offer = {
@@ -251,7 +279,19 @@ export type PayResult = { node: string; id: string; preimage: string | null; tok
 
 // ---------------------------------------------------------------- administration
 
+export type AlertSeverity = 'warning' | 'critical'
+export type Alert = {
+  id: string
+  type: 'low_rating' | 'courier_incident' | 'return_overdue' | 'payment_pending' | 'refund_pending'
+  severity: AlertSeverity
+  user_id?: number
+  order_id?: number
+  title: string
+  detail: string
+  path: string
+}
 export type AdminStats = {
+  alerts: Alert[]
   users: { total: number; active_7d: number; suspended: number; admins: number; bots: number }
   couriers: { online: number; busy: number }
   orders: { total: number; by_status: Partial<Record<OrderStatus, number>> }
@@ -270,6 +310,7 @@ export type AdminUser = PublicUser & {
   created_at: number
   last_seen_at: number | null
   ratings: { vendeur: Rating; livreur: Rating; client: Rating }
+  courier_service: ServiceRating
   sales: number
   purchases: number
   refusals: number
@@ -285,7 +326,7 @@ export type SystemInfo = {
   settings: Record<string, number>
   server: { node: string; uptime_s: number }
 }
-export type DispatchCourier = { user: PublicUser; is_suspended: boolean; status: CourierStatus; mode: 'gps' | 'sim'; position: { lat: number; lng: number; at: number | null } | null; current_order_id: number | null; offers_received: number; offers_accepted: number; acceptance_rate: number; rating: Rating }
+export type DispatchCourier = { user: PublicUser; is_suspended: boolean; status: CourierStatus; mode: 'gps' | 'sim'; position: { lat: number; lng: number; at: number | null } | null; current_order_id: number | null; offers_received: number; offers_accepted: number; acceptance_rate: number; rating: Rating; service: ServiceRating }
 export type DispatchOrder = { id: number; title: string; status: OrderStatus; courier_id: number | null; dispatch_round: number; shop: { lat: number; lng: number }; delivery: { lat: number; lng: number }; deadline_at: number | null }
 export type DispatchOffer = { id: number; order_id: number; title: string; courier_id: number; courier_name: string; round: number; cost: number; distance_km: number; status: string; created_at: number; responded_at: number | null }
 export type DispatchSnapshot = { couriers: DispatchCourier[]; orders: DispatchOrder[]; offers: DispatchOffer[] }

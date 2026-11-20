@@ -4,7 +4,7 @@ import {
   Tag, Trash2, Undo2, Users as UsersIcon, Wallet, Zap,
 } from 'lucide-react'
 import { type ReactNode, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { Amount } from '../../components/Amount'
 import { FleetMap, type DispatchPoint } from '../../components/Maps'
 import { Mono, SectionCard } from '../../components/Tech'
@@ -53,6 +53,29 @@ export function AdminOverview() {
         <Kpi icon={<Package />} label="Commandes" value={data.orders.total} sub={`${data.returns_in_progress} retours en cours`} />
         <Kpi icon={<Wallet />} label="Fonds bloqués" value={<Amount value={data.locked_sat} />} sub="En séquestre Lightning" tone="warn" />
       </div>
+
+      {data.alerts.length > 0 && (
+        <div className="card mt-6 p-5">
+          <p className="flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4 text-warn" /> Alertes ({data.alerts.length})</p>
+          <div className="mt-3 flex flex-col gap-2">
+            {data.alerts.map((a) => (
+              <Link
+                key={a.id}
+                to={a.path}
+                className={cx(
+                  'flex items-center justify-between gap-3 rounded-xl px-4 py-2.5 text-sm transition hover:brightness-95',
+                  a.severity === 'critical' ? 'bg-danger-soft text-danger' : 'bg-warn-soft text-warn',
+                )}
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{a.title}</p>
+                  <p className="truncate text-xs opacity-80">{a.detail}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {data.expiring_soon.length > 0 && (
         <div className="card mt-6 border-warn/30 p-5">
@@ -181,6 +204,11 @@ export function AdminUsers() {
                     <p>Vendeur {u.ratings.vendeur.avg ?? '—'} ({u.ratings.vendeur.count})</p>
                     <p>Livreur {u.ratings.livreur.avg ?? '—'} ({u.ratings.livreur.count})</p>
                     <p>Client {u.ratings.client.avg ?? '—'} ({u.ratings.client.count})</p>
+                    {(u.courier_service.missed_deliveries > 0 || u.courier_service.abandonments > 0 || u.courier_service.late_returns > 0) && (
+                      <p className="mt-0.5 text-danger">
+                        Service {u.courier_service.score}/5 · {u.courier_service.missed_deliveries} non-présentation(s), {u.courier_service.abandonments} abandon(s), {u.courier_service.late_returns} retour(s) en retard
+                      </p>
+                    )}
                   </td>
                   <td className="p-3.5 tabular">{u.sales} / {u.purchases}</td>
                   <td className="p-3.5 tabular">{u.refusals} / {u.absences}</td>
@@ -215,7 +243,11 @@ export function AdminUsers() {
 
 /* ==================================================================== commandes et litiges */
 
-const STATUSES: OrderStatus[] = ['awaiting_payment', 'searching_courier', 'assigned', 'picked_up', 'delivered', 'returning', 'returned', 'canceled']
+const STATUSES: OrderStatus[] = [
+  'awaiting_payment', 'searching_courier', 'assigned', 'picked_up', 'delivered',
+  'returning', 'returned', 'canceled',
+  'cancel_pending', 'delivery_pending', 'return_pending', 'return_payment_pending',
+]
 
 export function AdminOrders() {
   const [status, setStatus] = useState('')
@@ -261,14 +293,15 @@ export function AdminOrders() {
 
 function DisputeDialog({ order: o, onClose, onDone }: { order: Order; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
-  const [reason, setReason] = useState('')
+  const [refundReason, setRefundReason] = useState('')
+  const [feeReason, setFeeReason] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
 
   async function run(key: string, fn: () => Promise<unknown>, ok: string) {
     setBusy(key)
     try {
-      await fn()
-      toast(ok)
+      const r = (await fn()) as { order?: Order } | undefined
+      toast(r?.order?.financial_pending ? `${ok} (confirmation Lightning en cours)` : ok)
       onDone()
       onClose()
     } catch (err) {
@@ -280,19 +313,24 @@ function DisputeDialog({ order: o, onClose, onDone }: { order: Order; onClose: (
 
   const canRefundTotal = ['awaiting_payment', 'searching_courier', 'assigned', 'picked_up'].includes(o.status)
   const canFee = o.status === 'returning'
-  const canRefundFee = o.status === 'returned' && o.return_cause === 'refus' && ['non_conforme', 'endommage'].includes(o.refuse_reason ?? '') && !o.fee_refunded_at
+  const canRefundFee = o.fee_refund_status === 'pending'
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onClose}>
       <motion.div onClick={(e) => e.stopPropagation()} initial={{ scale: 0.96 }} animate={{ scale: 1 }} className="w-full max-w-lg rounded-2xl bg-surface p-6">
         <h3 className="text-lg font-bold">Commande #{o.id} · {o.title}</h3>
         <p className="mt-1 text-sm text-muted">Statut actuel : <StatusBadge status={o.status} /></p>
+        {o.financial_pending && (
+          <p className="mt-3 rounded-xl bg-warn-soft px-3.5 py-2.5 text-sm text-warn">
+            Une opération ({o.financial_action}) est enregistrée et attend sa confirmation Lightning. {o.financial_error ? `Dernier incident : ${o.financial_error}` : 'Nouvelle tentative automatique en cours.'}
+          </p>
+        )}
 
         {canRefundTotal && (
           <div className="mt-5 flex flex-col gap-2">
             <p className="text-sm font-semibold">Remboursement total avant remise</p>
-            <Field label="Motif (obligatoire)" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Article en rupture de stock" />
-            <Button variant="danger" loading={busy === 'refund'} disabled={!reason} onClick={() => run('refund', () => api(`/api/admin/orders/${o.id}/refund`, { body: { reason } }), 'Commande remboursée')}>
+            <Field label="Motif (obligatoire)" value={refundReason} onChange={(e) => setRefundReason(e.target.value)} placeholder="Article en rupture de stock" />
+            <Button variant="danger" loading={busy === 'refund'} disabled={!refundReason} onClick={() => run('refund', () => api(`/api/admin/orders/${o.id}/refund`, { body: { reason: refundReason } }), 'Commande remboursée')}>
               <Undo2 className="h-4 w-4" /> Rembourser intégralement
             </Button>
           </div>
@@ -301,20 +339,23 @@ function DisputeDialog({ order: o, onClose, onDone }: { order: Order; onClose: (
         {canFee && (
           <div className="mt-5 flex flex-col gap-2 border-t border-line pt-5">
             <p className="text-sm font-semibold">Retour bloqué : le vendeur n’a pas confirmé</p>
+            <Field label="Motif (obligatoire)" value={feeReason} onChange={(e) => setFeeReason(e.target.value)} placeholder="Retour du colis vérifié auprès du vendeur" />
             <div className="grid grid-cols-2 gap-3">
-              <Button variant="secondary" loading={busy === 'pay'} onClick={() => run('pay', () => api(`/api/admin/orders/${o.id}/fee`, { body: { action: 'pay' } }), 'Livreur payé')}>Payer le livreur</Button>
-              <Button variant="danger" loading={busy === 'cancel'} onClick={() => run('cancel', () => api(`/api/admin/orders/${o.id}/fee`, { body: { action: 'cancel' } }), 'Frais annulés')}>Annuler les frais</Button>
+              <Button variant="secondary" loading={busy === 'pay'} disabled={!feeReason} onClick={() => run('pay', () => api(`/api/admin/orders/${o.id}/fee`, { body: { action: 'pay', reason: feeReason } }), 'Livreur payé')}>Payer le livreur</Button>
+              <Button variant="danger" loading={busy === 'cancel'} disabled={!feeReason} onClick={() => run('cancel', () => api(`/api/admin/orders/${o.id}/fee`, { body: { action: 'cancel', reason: feeReason } }), 'Frais annulés')}>Annuler les frais</Button>
             </div>
           </div>
         )}
 
         {canRefundFee && (
           <div className="mt-5 flex flex-col gap-2 border-t border-line pt-5">
-            <p className="text-sm font-semibold">Produit non conforme : rembourser les frais au client</p>
-            <p className="text-xs text-muted">Une facture est créée par le nœud acheteur et payée par le vendeur.</p>
+            <p className="text-sm font-semibold">Rembourser les frais de livraison au client</p>
+            <p className="text-xs text-muted">Une facture est créée par le nœud acheteur et payée par le vendeur. Nouvelle tentative possible si la précédente a échoué (sans créer de second débit).</p>
+            {o.fee_refund_error && <p className="text-xs text-danger">Dernière tentative : {o.fee_refund_error}</p>}
             <Button loading={busy === 'refund-fee'} onClick={() => run('refund-fee', () => api(`/api/admin/orders/${o.id}/refund-fee`, { method: 'POST' }), 'Frais remboursés par le vendeur')}>Rembourser les frais</Button>
           </div>
         )}
+        {o.fee_refund_status === 'awaiting_return' && <p className="mt-4 text-xs text-muted">Remboursement des frais prévu une fois le retour confirmé.</p>}
 
         {!canRefundTotal && !canFee && !canRefundFee && <p className="mt-4 text-sm text-muted">Aucune action disponible pour ce statut.</p>}
 
@@ -345,7 +386,10 @@ export function AdminDispatch() {
             {data.couriers.map((c) => (
               <div key={c.user.id} className="flex items-center gap-3 py-2.5 text-sm">
                 <Avatar name={c.user.name} url={c.user.avatar_url} size={28} />
-                <span className="flex-1 truncate">{c.user.name}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate">{c.user.name}</p>
+                  <p className="text-xs text-muted">Service {c.service.score}/5</p>
+                </div>
                 <span className={cx('rounded-full px-2 py-0.5 text-xs font-semibold', c.status === 'available' ? 'bg-brand-soft text-brand' : c.status === 'busy' ? 'bg-warn-soft text-warn' : 'bg-subtle text-muted')}>{c.status}</span>
               </div>
             ))}
