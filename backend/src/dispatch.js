@@ -17,6 +17,7 @@ const config = require('./config');
 const db = require('./db');
 const v = require('./util');
 const { requireAuth, ratingsOf, publicUser } = require('./auth');
+const { serviceRating } = require('./courier-metrics');
 const { fail, now, haversine, moveToward, DAKAR, round } = v;
 
 const orders = () => require('./orders'); // import différé (dépendance circulaire)
@@ -40,7 +41,8 @@ const acceptanceRate = (c) => (c.offers_received ? c.offers_accepted / c.offers_
 function costOf(c, shop) {
   const distance = haversine(c.lat, c.lng, shop.lat, shop.lng);
   const r = ratingsOf(c.user_id).livreur;
-  const ratingPenalty = r.count ? (5 - r.avg) * 0.6 : 0.4;
+  const service = serviceRating(c.user_id);
+  const ratingPenalty = r.count || service.missed_deliveries || service.abandonments || service.late_returns ? (5 - service.score) * 0.6 : 0.4;
   const reliability = (1 - acceptanceRate(c)) * 2;
   return { cost: round(distance + ratingPenalty + reliability, 3), distance: round(distance, 3) };
 }
@@ -61,6 +63,7 @@ function courierView(c) {
     offers_accepted: c.offers_accepted,
     acceptance_rate: round(acceptanceRate(c), 3),
     rating: ratingsOf(c.user_id).livreur,
+    service: serviceRating(c.user_id),
   };
 }
 

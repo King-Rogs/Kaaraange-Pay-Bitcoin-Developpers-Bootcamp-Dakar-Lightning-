@@ -1,3 +1,5 @@
+> Livraison backend : consulter [le rapport complet](docs/rapport-livraison-backend.md), [la checklist validée](docs/backend-finalise.md) et [le contrat API](docs/contrat-api-backend.md). Les 47 tests backend, 23 contrôles Lightning et 4 contrôles Core ont réussi. La branche de livraison contient le backend et sa documentation ; l’équipe frontend doit intégrer les nouveaux états financiers et le motif obligatoire des arbitrages.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/kaaraange-logo-dark.png">
@@ -9,9 +11,9 @@
 
 **Le séquestre automatique sur Bitcoin Lightning pour le commerce sur WhatsApp, TikTok et Instagram.**
 
-L'argent de l'acheteur reste bloqué jusqu'à la remise du colis. Le vendeur **et** le livreur sont payés en un seul scan du QR code du client. Le livreur est **toujours payé** s'il s'est déplacé, même si le client refuse le colis.
+L'argent de l'acheteur reste bloqué jusqu'à la remise du colis. Le vendeur **et** le livreur sont payés en un seul scan du QR code du client. Après refus, le livreur est payé au retour confirmé, puis le vendeur rembourse la livraison à l’acheteur selon la règle retenue.
 
-> *Kaaraange* veut dire « protection » en wolof. **Personne ne garde l'argent, pas même la plateforme** : la garantie vient du protocole Lightning, pas d'une entreprise.
+> *Kaaraange* veut dire « protection » en wolof. Cette démonstration regtest utilise des nœuds partagés pilotés par le serveur ; les HTLC ne rendent pas les portefeuilles indépendants de l’opérateur.
 
 Projet réalisé pour le hackathon de clôture d'un Bitcoin Bootcamp au Sénégal.
 
@@ -139,7 +141,7 @@ Le premier compte créé avec l'adresse de `ADMIN_EMAIL` (par défaut `admin@kaa
 3. **Connexion acheteuse** (`fatou@demo.kaaraange.sn`) → *Acheter* → choisir l'article → placer le point de livraison sur la carte (Plateau) → voir le devis en direct (distance, frais, total) → **Payer**. Montrer que le statut passe à « Recherche d'un livreur ».
 4. **Espace admin → Dispatch** : la carte montre les livreurs simulés qui se déplacent ; l'un d'eux reçoit une offre de 30 s, l'accepte, se dirige vers la boutique.
 5. **Mes achats** (acheteuse) : la carte montre le livreur en direct ; le QR du code de livraison.
-6. **Suite automatique (mode simulé)** : le livreur fictif récupère le colis puis attend ; **scanner/saisir le code** (bouton « J'ai reçu mon colis ») → vendeur **et** livreur payés d'un coup. Montrer les deux factures « SETTLED » dans « Sous le capot ».
+6. **Suite automatique (mode simulé)** : le livreur fictif récupère le colis puis attend ; **scanner/saisir le code** (bouton « J'ai reçu mon colis ») → règlements successifs du vendeur et du livreur, avec reprise persistante. Montrer les deux factures « SETTLED » dans « Sous le capot ».
 7. **Scénario de refus** : refaire un achat, le livreur récupère le colis, l'acheteuse **refuse** (motif « non conforme ») → le prix revient instantanément, les frais restent bloqués → le vendeur confirme le retour → le livreur est payé quand même.
 8. **Console Lightning** : montrer les 3 nœuds, les canaux alice→bob→bob→carol, payer une facture console et vérifier SHA-256(preimage) = payment_hash dans le navigateur.
 9. **Portefeuille** : miner 101 blocs, montrer les 50 BTC qui deviennent disponibles, envoyer une transaction.
@@ -174,7 +176,7 @@ Rien dans le code applicatif : seules deux variables d'environnement changent (`
 - Sessions : jeton aléatoire dans un cookie `HttpOnly; SameSite=Lax`, seul son SHA-256 est stocké en base.
 - Jetons de réinitialisation : hachés, à usage unique, valables 30 minutes ; `/forgot` répond identiquement que l'e-mail existe ou non.
 - Le secret de la facture B n'est **jamais** exposé par l'API, sous aucune route.
-- Le code de livraison (secret A) n'existe que dans le navigateur de l'acheteur (`localStorage`, repli en mémoire) : le serveur ne connaît que son hash.
+- Le secret A reste dans le navigateur jusqu’à la confirmation de remise. Seul son hash arrive à la création. Le code transmis à la remise est persisté pour permettre la reprise financière, puis supprimé après confirmation.
 - Vérification du vrai type des images par signature d'octets (pas par extension), nom de fichier aléatoire, taille limitée à 2 Mo.
 - Toutes les routes `/api/admin/*` sont vérifiées côté serveur (401 sans session, 403 pour un compte non admin).
 - Limite de taille des requêtes JSON (100 ko).

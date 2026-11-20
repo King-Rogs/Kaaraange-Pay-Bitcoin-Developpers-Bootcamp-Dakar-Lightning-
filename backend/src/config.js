@@ -67,13 +67,17 @@ const config = {
   frontendDist: path.resolve(ROOT, str('FRONTEND_DIST', '../frontend/dist')),
 
   lndMode: oneOf('LND_MODE', ['mock', 'lnd'], 'mock'),
+  lndRpcTimeoutMs: num('LND_RPC_TIMEOUT_MS', 5000),
+  lndPaymentTimeoutMs: num('LND_PAYMENT_TIMEOUT_MS', 30000),
+  lndPathfindingMs: num('LND_PATHFINDING_MS', 10000),
   lnd: {
-    acheteur: lndNode('acheteur', 'alice', '127.0.0.1:10001'),
-    vendeur: lndNode('vendeur', 'bob', '127.0.0.1:10002'),
-    livreur: lndNode('livreur', 'carol', '127.0.0.1:10003'),
+    acheteur: lndNode('acheteur', 'fatou', '127.0.0.1:10001'),
+    vendeur: lndNode('vendeur', 'awa', '127.0.0.1:10002'),
+    livreur: lndNode('livreur', 'moussa', '127.0.0.1:10003'),
   },
 
   btcMode: oneOf('BTC_MODE', ['mock', 'rpc'], 'mock'),
+  btcMineTimeoutMs: num('BTC_MINE_TIMEOUT_MS', 120000),
   btcRpc: {
     url: str('BTC_RPC_URL', 'http://127.0.0.1:18443'),
     user: str('BTC_RPC_USER', 'polaruser'),
@@ -87,6 +91,10 @@ const config = {
   feeBaseXof: num('FEE_BASE_XOF', 500),
   feePerKmXof: num('FEE_PER_KM_XOF', 150),
   deadlineMin: num('DEADLINE_MIN', 120),
+  returnDeadlineMin: num('RETURN_DEADLINE_MIN', 120),
+  holdCltvDelta: num('HOLD_CLTV_DELTA', 288),
+  recoveryRetrySec: num('RECOVERY_RETRY_SEC', 5),
+  lowRatingThreshold: num('LOW_RATING_THRESHOLD', 3),
   invoiceExpiryMin: num('INVOICE_EXPIRY_MIN', 30),
   pickupRadiusKm: num('PICKUP_RADIUS_KM', 0.5),
   absentRadiusKm: num('ABSENT_RADIUS_KM', 0.5),
@@ -100,5 +108,22 @@ const config = {
   simAcceptDelaySec: num('SIM_ACCEPT_DELAY_SEC', 3),
   tickMs: num('TICK_MS', 2000),
 };
+
+for (const key of ['deadlineMin', 'returnDeadlineMin', 'invoiceExpiryMin']) {
+  if (config[key] <= 0) throw new Error(`${key} doit être strictement positif.`);
+}
+// Cible Bitcoin de 10 min/bloc + 12 blocs de marge ; en regtest, le jury
+// doit également contrôler le nombre de blocs minés pendant une commande.
+const minimumCltv = Math.ceil((config.invoiceExpiryMin + config.deadlineMin + config.returnDeadlineMin) / 10) + 12;
+if (!Number.isInteger(config.holdCltvDelta) || config.holdCltvDelta < minimumCltv) {
+  throw new Error(`HOLD_CLTV_DELTA doit être un entier >= ${minimumCltv} pour couvrir les délais configurés.`);
+}
+if (config.recoveryRetrySec < 0 || config.lowRatingThreshold < 1 || config.lowRatingThreshold > 5) {
+  throw new Error('RECOVERY_RETRY_SEC doit être positif ou nul et LOW_RATING_THRESHOLD compris entre 1 et 5.');
+}
+for (const key of ['lndRpcTimeoutMs', 'lndPaymentTimeoutMs', 'lndPathfindingMs']) {
+  if (!Number.isInteger(config[key]) || config[key] < 100 || config[key] > 120000) throw new Error(`${key} doit être un entier entre 100 et 120000 ms.`);
+}
+if (!Number.isInteger(config.btcMineTimeoutMs) || config.btcMineTimeoutMs < 1000 || config.btcMineTimeoutMs > 600000) throw new Error('BTC_MINE_TIMEOUT_MS doit être entre 1000 et 600000 ms.');
 
 module.exports = config;

@@ -422,7 +422,7 @@ test('notes : vendeur, livreur, client ; une seule par cible ; achat vérifié ;
   const me = expectStatus(await buyer.get('/api/auth/me'), 200);
   assert.deepEqual(me.user.ratings.client, { avg: 5, count: 1 });
   const o = expectStatus(await buyer.get(`/api/orders/${order1.id}`), 200).order;
-  assert.deepEqual(o.can_review, { vendeur: false, livreur: false, client: false });
+  assert.deepEqual(o.can_review, { vendeur: false, livreur: false, client: false, produit: true });
 });
 
 test('refus : prix rendu, frais encore bloqués, retour confirmé, livreur payé', async () => {
@@ -448,24 +448,33 @@ test('refus : prix rendu, frais encore bloqués, retour confirmé, livreur payé
   r = await buyer.post(`/api/orders/${order2.id}/confirm-return`);
   assert.equal(r.status, 403);
   const carolBefore = channel('bob', 'carol').bal.carol;
+  const paySync = ln.vendeur.paySync;
+  ln.vendeur.paySync = async () => { throw [503, 'Unavailable']; };
   const back = expectStatus(await seller.post(`/api/orders/${order2.id}/confirm-return`), 200);
+  ln.vendeur.paySync = paySync;
   assert.equal(back.order.status, 'returned');
   assert.equal(back.order.invoices.fee.state, 'SETTLED');
+  assert.equal(back.order.fee_refund_status, 'pending', 'panne vendeur : remboursement en attente, jamais annoncé comme terminé');
+  assert.ok(db.one('SELECT fee_refund_request FROM orders WHERE id = ?', order2.id).fee_refund_request);
   assert.equal(channel('bob', 'carol').bal.carol - carolBefore, order2.fee_sat, 'livreur payé pour son déplacement');
   assert.equal(courierRow(users['livreur éloigné'].id).status, 'available');
   expectStatus(await buyer.post(`/api/orders/${order2.id}/review`, { target: 'livreur', rating: 5 }), 201);
 });
 
-test('option A : remboursement des frais au client par le vendeur', async () => {
+test('remboursement automatique : reprise après panne et absence de double paiement', async () => {
   let r = await buyer.post(`/api/admin/orders/${order2.id}/refund-fee`);
   assert.equal(r.status, 403);
   r = await admin.post(`/api/admin/orders/${order1.id}/refund-fee`);
   assert.equal(r.status, 409, 'pas de remboursement des frais pour une commande livrée');
   const aliceBefore = channel('alice', 'bob').bal.alice;
-  const d = expectStatus(await admin.post(`/api/admin/orders/${order2.id}/refund-fee`), 200);
+  db.update('orders', order2.id, { fee_refund_attempt_at: 0 });
+  await srv.tick();
+  const d = expectStatus(await buyer.get(`/api/orders/${order2.id}`), 200);
+  assert.equal(d.order.fee_refund_status, 'completed');
   assert.ok(d.order.fee_refunded_at);
-  assert.deepEqual(d.payment.route, ['bob', 'alice']);
   assert.equal(channel('alice', 'bob').bal.alice - aliceBefore, order2.fee_sat, 'facture créée par alice, payée par bob');
+  await srv.tick();
+  assert.equal(channel('alice', 'bob').bal.alice - aliceBefore, order2.fee_sat, 'un seul remboursement');
   r = await admin.post(`/api/admin/orders/${order2.id}/refund-fee`);
   assert.equal(r.status, 409, 'pas de double remboursement');
 });
@@ -489,7 +498,7 @@ test('client absent : refusé loin, accepté sur place ; l’admin paie le livre
   r = await admin.post(`/api/admin/orders/${order.id}/fee`, { action: 'nimporte' });
   assert.equal(r.status, 400);
   const carolBefore = channel('bob', 'carol').bal.carol;
-  const paid = expectStatus(await admin.post(`/api/admin/orders/${order.id}/fee`, { action: 'pay' }), 200);
+  const paid = expectStatus(await admin.post(`/api/admin/orders/${order.id}/fee`, { action: 'pay', reason: 'Retour du colis vérifié par administration' }), 200);
   assert.equal(paid.order.status, 'returned');
   assert.equal(paid.order.invoices.fee.state, 'SETTLED');
   assert.equal(channel('bob', 'carol').bal.carol - carolBefore, order.fee_sat);
@@ -690,12 +699,42 @@ test('admin : journal d’audit complet', async () => {
     'compte.inscription', 'compte.connexion', 'compte.connexion_echouee', 'compte.mot_de_passe_oublie', 'compte.mot_de_passe_reinitialise', 'compte.mot_de_passe_modifie',
     'commande.creation', 'commande.paiement', 'offre.acceptee', 'offre.refusee', 'offre.expiree', 'commande.retrait', 'livraison.code_incorrect', 'commande.livree',
     'commande.refus', 'commande.client_absent', 'commande.retour_confirme', 'commande.remboursement_auto', 'commande.annulation',
-    'admin.frais_payes_livreur', 'admin.frais_rembourses_par_vendeur', 'admin.remboursement_total', 'admin.retrait_article', 'admin.suspension', 'admin.reactivation', 'admin.nomination',
+    'admin.frais_payes_livreur', 'commande.frais_rembourses_par_vendeur', 'admin.remboursement_total', 'admin.retrait_article', 'admin.suspension', 'admin.reactivation', 'admin.nomination',
   ]) {
     assert.ok(actions.has(a), `action absente du journal : ${a}`);
   }
   const failed = entries.find((e) => e.action === 'compte.connexion_echouee');
   assert.equal(failed.details.email, 'awa@kaaraange.test');
+});
+
+test('reprise après paiement confirmé mais accusé applicatif perdu : aucun second débit', async () => {
+  const before = channel('alice', 'bob').bal.alice;
+  db.update('orders', order2.id, { fee_refunded_at: null, fee_refund_attempt_at: 0 });
+  const paySync = ln.vendeur.paySync;
+  ln.vendeur.paySync = async () => { assert.fail('Une facture déjà réglée ne doit pas être repayée'); };
+  try { await srv.tick(); } finally { ln.vendeur.paySync = paySync; }
+  assert.ok(db.one('SELECT fee_refunded_at FROM orders WHERE id = ?', order2.id).fee_refunded_at);
+  assert.equal(channel('alice', 'bob').bal.alice, before);
+});
+
+test('tous les motifs de refus : livraison prise en charge automatiquement par le vendeur', async () => {
+  const spentBefore = (await buyer.get('/api/stats')).data.stats.spent_sat;
+  db.update('articles', article.id, { is_active: 1 });
+  db.run("UPDATE couriers SET status = 'offline'");
+  expectStatus(await c1.post('/api/courier/status', { status: 'available', mode: 'sim', ...MEDINA }), 200);
+  for (const reason of ['non_conforme', 'endommage', 'change_avis', 'autre']) {
+    const { order } = await createPaidOrder(buyer);
+    await srv.tick();
+    const { offer } = clientWithOffer(order.id);
+    expectStatus(await c1.post(`/api/courier/offers/${offer.id}/accept`), 200);
+    expectStatus(await c1.post(`/api/orders/${order.id}/pickup`), 200);
+    expectStatus(await buyer.post(`/api/orders/${order.id}/refuse`, { reason }), 200);
+    const before = channel('alice', 'bob').bal.alice;
+    const result = expectStatus(await seller.post(`/api/orders/${order.id}/confirm-return`), 200);
+    assert.equal(result.order.fee_refund_status, 'completed', reason);
+    assert.equal(channel('alice', 'bob').bal.alice - before, order.fee_sat, reason);
+  }
+  assert.equal((await buyer.get('/api/stats')).data.stats.spent_sat, spentBefore, 'les frais remboursés ne restent pas comptés comme dépense');
 });
 
 test('simulation : création des livreurs fictifs, impossibles à connecter', async () => {
@@ -711,5 +750,7 @@ test('simulation : création des livreurs fictifs, impossibles à connecter', as
 
 after(async () => {
   if (srv) await srv.stop();
+  assert.equal(path.dirname(path.resolve(TMP)), path.resolve(os.tmpdir()));
+  assert.match(path.basename(TMP), /^kaaraange-test-/);
   fs.rmSync(TMP, { recursive: true, force: true });
 });
