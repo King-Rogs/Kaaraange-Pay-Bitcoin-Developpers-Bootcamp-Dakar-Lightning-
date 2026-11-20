@@ -179,7 +179,7 @@ class MockChain {
     txs.sort((a, b) => b.time - a.time || a.confirmations - b.confirmations);
     return {
       balances: { trusted_sat: sum('trusted'), untrusted_pending_sat: sum('untrusted_pending'), immature_sat: sum('immature') },
-      addresses: w.addresses.slice(-5).reverse(),
+      addresses: w.addresses.slice().reverse(),
       transactions: txs.slice(0, 50),
       utxos: utxos.map(({ kind, ...u }) => ({ ...u, spendable: kind === 'trusted' })).sort((a, b) => b.amount_sat - a.amount_sat),
     };
@@ -202,6 +202,28 @@ class MockChain {
     }
     this.save();
     return { address, hashes };
+  }
+
+  async fund(name, sats) {
+    const address = await this.newAddress(name);
+    const tx = { txid: randHash(), coinbase: false, vin: [], vout: [{ n: 0, value: sats, address }], fee: 0, block: this.tip, time: nowSec() };
+    this.s.txs[tx.txid] = tx;
+    this.save();
+    return { txid: tx.txid, address, amount_sat: sats };
+  }
+
+  async setBalance(name, sats) {
+    this.wallet(name);
+    for (const tx of Object.values(this.s.txs)) {
+      for (let i = 0; i < tx.vout.length; i += 1) {
+        if (this.wallet(name).addresses.includes(tx.vout[i].address)) this.s.spent[`${tx.txid}:${i}`] = tx.txid;
+      }
+    }
+    const address = await this.newAddress(name);
+    const tx = { txid: randHash(), coinbase: false, vin: [], vout: [{ n: 0, value: sats, address }], fee: 0, block: this.tip, time: nowSec() };
+    this.s.txs[tx.txid] = tx;
+    this.save();
+    return { txid: tx.txid, address, amount_sat: sats };
   }
 
   async send(name, address, sats) {
@@ -362,7 +384,7 @@ class RpcChain {
         untrusted_pending_sat: toSat(bal.mine.untrusted_pending),
         immature_sat: toSat(bal.mine.immature),
       },
-      addresses: Object.keys(addrs).slice(-5).reverse(),
+      addresses: Object.keys(addrs).reverse(),
       transactions: txs
         .map((t) => ({ txid: t.txid, category: t.category, amount_sat: toSat(t.amount), fee_sat: t.fee ? -toSat(t.fee) : 0, address: t.address, confirmations: t.confirmations, time: t.time }))
         .reverse(),

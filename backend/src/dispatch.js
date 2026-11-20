@@ -102,7 +102,7 @@ function expireOffers() {
 function candidatesFor(o) {
   return db.all(
     `SELECT c.* FROM couriers c JOIN users u ON u.id = c.user_id
-     WHERE c.status = 'available' AND u.is_suspended = 0 AND c.lat IS NOT NULL
+     WHERE c.status = 'available' AND u.is_suspended = 0 AND u.is_bot = 0 AND c.lat IS NOT NULL
        AND c.user_id NOT IN (?, ?)
        AND NOT EXISTS (SELECT 1 FROM offers f WHERE f.courier_id = c.user_id AND f.status = 'pending')`,
     o.buyer_id,
@@ -201,6 +201,25 @@ function seedBots(count = config.simBots) {
     }
   }
   return created;
+}
+
+function retireUnusedSimBots() {
+  const bots = db.all('SELECT id FROM users WHERE is_bot = 1');
+  let removed = 0;
+  for (const bot of bots) {
+    const used = db.one(
+      'SELECT id FROM orders WHERE buyer_id = ? OR seller_id = ? OR courier_id = ? LIMIT 1',
+      bot.id,
+      bot.id,
+      bot.id,
+    );
+    if (used) continue;
+    db.run('DELETE FROM offers WHERE courier_id = ?', bot.id);
+    db.run('DELETE FROM couriers WHERE user_id = ?', bot.id);
+    db.run('DELETE FROM users WHERE id = ?', bot.id);
+    removed += 1;
+  }
+  return removed;
 }
 
 function botsRespond() {
@@ -368,4 +387,4 @@ function adminSnapshot() {
   };
 }
 
-module.exports = { router, tick, seedBots, freeCourier, ensureCourier, costOf, adminSnapshot, expireOffers, assignOffers, moveSim };
+module.exports = { router, tick, seedBots, retireUnusedSimBots, freeCourier, ensureCourier, costOf, adminSnapshot, expireOffers, assignOffers, moveSim };

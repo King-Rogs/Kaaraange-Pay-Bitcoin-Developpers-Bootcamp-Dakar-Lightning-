@@ -2,6 +2,23 @@
 
 Le backend Kaaraange Pay utilise une session authentifiée dans un cookie HttpOnly. Les routes `/api/admin/*` exigent un compte administrateur ; les autres actions vérifient le rôle de l’utilisateur dans la commande.
 
+Un compte administrateur ne peut pas utiliser les routes commerce, livraison ou portefeuille réservées aux utilisateurs ordinaires : ces routes renvoient HTTP 403. Les routes `/api/admin/*` restent accessibles uniquement aux administrateurs.
+
+Dans `GET /api/admin/users`, `wallet_sat` et `available_sat` représentent le solde Bitcoin total disponible du portefeuille de chaque utilisateur, en sats. Ce solde vient de `trusted_sat` : les fonds non confirmés (`untrusted_pending_sat`) et immatures (`immature_sat`) ne sont pas inclus. Un portefeuille non créé renvoie `0`.
+
+Dans `GET /api/wallet`, les soldes sont cohérents avec la règle suivante :
+
+- `balances.trusted_sat` : solde Bitcoin confirmé présent sur le portefeuille.
+- `balances.locked_sat` : montant encore bloqué dans une commande en cours.
+- `balances.available_sat` : montant réellement utilisable.
+- `balances.total_sat` : solde actuel du compte après les dépenses confirmées et les fonds bloqués.
+- Les trois comptes de démonstration commencent chacun avec exactement 2 000 000 sats : Awa Couture, Fatou Ndiaye et Moussa Sarr.
+- Après une commande payée : `total_sat = trusted_sat - locked_sat - dépenses_confirmées`.
+- La livraison réussie conserve la dépense confirmée : le montant n’est plus disponible ni considéré comme bloqué.
+- Un refus ou une annulation rend le montant concerné : le montant remboursé revient au solde total.
+
+Les données de démonstration sont limitées à trois comptes réels : Awa Couture (vendeuse), Fatou Ndiaye (acheteuse) et Moussa Sarr (livreur). Aucun livreur simulé n’est créé par défaut. Lorsque Moussa met son compte disponible, il reçoit les courses. Aucun compte de livreur fictif n’est créé par défaut.
+
 ## Arbitrer les frais de livraison
 
 `POST /api/admin/orders/:id/fee`

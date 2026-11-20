@@ -240,7 +240,9 @@ export type Wallet = {
   exists: boolean
   mode: string
   chain: ChainInfo
-  balances?: { trusted_sat: number; untrusted_pending_sat: number; immature_sat: number }
+  wallets?: { id: number; name: string; label: string; active: boolean }[]
+  lightning?: { available_sat: number; locked_sat: number; total_sat: number }
+  balances?: { trusted_sat: number; untrusted_pending_sat: number; immature_sat: number; available_sat?: number; locked_sat?: number; total_sat?: number }
   addresses?: string[]
   transactions?: WalletTx[]
   utxos?: Utxo[]
@@ -311,7 +313,10 @@ export type AdminUser = PublicUser & {
   last_seen_at: number | null
   ratings: { vendeur: Rating; livreur: Rating; client: Rating }
   courier_service: ServiceRating
+  /** Solde Bitcoin disponible, en sats (montants en attente exclus). */
   wallet_sat: number
+  available_sat: number
+  total_sat: number
   sales: number
   purchases: number
   refusals: number

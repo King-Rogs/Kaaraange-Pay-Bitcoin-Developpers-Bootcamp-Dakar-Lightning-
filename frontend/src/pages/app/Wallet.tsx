@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { ArrowDownLeft, ArrowUpRight, Coins, CreditCard, RefreshCw, Send, Wallet as WalletIcon } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Coins, CreditCard, Plus, RefreshCw, Send, Wallet as WalletIcon } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { AppQr } from '../../components/AppQr'
 import { Btc as BtcAmount } from './walletParts'
@@ -16,6 +16,8 @@ export default function WalletPage() {
   const toast = useToast()
   const [busy, setBusy] = useState<string | null>(null)
   const [allTx, setAllTx] = useState(false)
+  const [walletLabel, setWalletLabel] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
 
   async function run<T>(key: string, fn: () => Promise<T>, ok?: (r: T) => string) {
     setBusy(key)
@@ -32,13 +34,10 @@ export default function WalletPage() {
   }
 
   async function buy() {
-    const before = w?.balances?.trusted_sat ?? 0
     setBusy('buy')
     try {
-      await api('/api/wallet/mine', { body: { blocks: 101 } })
-      const after = await api<W>('/api/wallet')
-      const added = (after.balances?.trusted_sat ?? 0) - before
-      toast(added > 0 ? `${added.toLocaleString('fr-FR')} sats ajoutés à votre portefeuille` : 'Achat enregistré : disponible sous peu')
+      await api('/api/wallet/buy', { body: { amount_sat: 900 } })
+      toast('900 sats ajoutés immédiatement à votre portefeuille')
       reload()
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erreur', 'error')
@@ -52,7 +51,7 @@ export default function WalletPage() {
   if (!w.exists) {
     return (
       <>
-        <PageHeader title="Portefeuille Bitcoin" text="Votre portefeuille de test : aucune valeur réelle." />
+        <PageHeader title="Portefeuille Bitcoin" text="Votre portefeuille numérique : aucune valeur réelle." />
         <div className="card mx-auto flex max-w-2xl flex-col items-center gap-6 p-10 text-center">
           <motion.span initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="grid h-20 w-20 place-items-center rounded-3xl bg-btc-soft text-btc-ink">
             <WalletIcon className="h-9 w-9" />
@@ -72,21 +71,59 @@ export default function WalletPage() {
   const bal = w.balances!
   const address = w.addresses?.[0] ?? null
   const txs = w.transactions ?? []
-  const pendingTotal = bal.untrusted_pending_sat + bal.immature_sat
+  const activeWallet = w.wallets?.find((item) => item.active)
 
   return (
     <>
-      <PageHeader title="Portefeuille Bitcoin" text="Votre portefeuille de test : aucune valeur réelle." />
+      <PageHeader title="Mes portefeuilles" text="Gérez vos soldes Bitcoin et Lightning depuis un même compte." />
+
+      <SectionCard title="Portefeuilles" icon={<WalletIcon />} className="mb-6">
+        <div className="flex flex-wrap gap-2">
+          {w.wallets?.map((item) => (
+            <Button
+              key={item.id}
+              size="sm"
+              variant={item.active ? 'primary' : 'secondary'}
+              loading={busy === `switch-${item.id}`}
+              onClick={() => run(`switch-${item.id}`, () => api('/api/wallet/switch', { body: { wallet_id: item.id } }), () => `Portefeuille ${item.label} sélectionné`)}
+            >
+              {item.label}
+            </Button>
+          ))}
+          <Button size="sm" variant="secondary" onClick={() => setCreateOpen((value) => !value)}>
+            <Plus className="h-4 w-4" /> Nouveau portefeuille
+          </Button>
+        </div>
+        {createOpen && (
+          <div className="mt-4 flex max-w-md gap-2">
+            <Field label="Nom du portefeuille" value={walletLabel} onChange={(e) => setWalletLabel(e.target.value)} placeholder="Épargne, dépenses…" />
+            <Button
+              className="mt-auto"
+              loading={busy === 'create'}
+              disabled={!walletLabel.trim()}
+              onClick={() => run('create', () => api('/api/wallet/create', { body: { label: walletLabel.trim() } }), () => 'Nouveau portefeuille créé')}
+            >
+              Créer
+            </Button>
+          </div>
+        )}
+        {activeWallet && <p className="mt-3 text-xs text-muted">Portefeuille actif : {activeWallet.label}</p>}
+      </SectionCard>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="card relative overflow-hidden p-6">
           <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-btc/15 blur-3xl" aria-hidden />
           <p className="text-sm font-medium text-muted">Solde disponible</p>
-          <BtcAmount value={bal.trusted_sat} big className="mt-2" />
+          <BtcAmount value={bal.available_sat ?? bal.trusted_sat} big className="mt-2" />
         </div>
         <div className="card p-6">
-          <p className="text-sm font-medium text-muted">En cours de confirmation</p>
-          <BtcAmount value={pendingTotal} big className="mt-2" />
+          <p className="text-sm font-medium text-muted">Solde total du compte</p>
+          <BtcAmount value={bal.total_sat ?? bal.trusted_sat} big className="mt-2" />
+          {(bal.locked_sat ?? w.lightning?.locked_sat ?? 0) > 0 && (
+            <p className="mt-2 text-xs text-muted">
+              {(bal.locked_sat ?? w.lightning?.locked_sat ?? 0).toLocaleString('fr-FR')} sats bloqués jusqu’à l’issue de la commande
+            </p>
+          )}
         </div>
       </div>
 
@@ -108,6 +145,14 @@ export default function WalletPage() {
                 <span className="text-xs font-semibold uppercase tracking-wider text-muted">Votre adresse</span>
                 <Mono value={address} short={false} label="l’adresse" />
               </div>
+              {w.addresses && w.addresses.length > 1 && (
+                <div className="flex flex-col gap-2 rounded-xl border border-line p-3">
+                  <span className="text-xs font-semibold text-muted">Adresses conservées</span>
+                  {w.addresses.map((oldAddress) => (
+                    <Mono key={oldAddress} value={oldAddress} short label="une adresse" />
+                  ))}
+                </div>
+              )}
             </>
           ) : null}
           <Button variant="secondary" loading={busy === 'addr'} onClick={() => run('addr', () => api('/api/wallet/address', { method: 'POST' }), () => 'Nouvelle adresse générée')}>
@@ -155,7 +200,7 @@ const TX_STYLE: Record<string, { label: string; cls: string; icon: JSX.Element }
   receive: { label: 'Reçu', cls: 'bg-brand-soft text-brand', icon: <ArrowDownLeft className="h-3.5 w-3.5" /> },
   send: { label: 'Envoyé', cls: 'bg-danger-soft text-danger', icon: <ArrowUpRight className="h-3.5 w-3.5" /> },
   generate: { label: 'Achat', cls: 'bg-btc-soft text-btc-ink', icon: <CreditCard className="h-3.5 w-3.5" /> },
-  immature: { label: 'Achat (en confirmation)', cls: 'bg-subtle text-muted', icon: <CreditCard className="h-3.5 w-3.5" /> },
+  immature: { label: 'Achat', cls: 'bg-btc-soft text-btc-ink', icon: <CreditCard className="h-3.5 w-3.5" /> },
 }
 
 function TxRow({ t }: { t: WalletTx }) {

@@ -9,7 +9,7 @@ export function Btc({ value, big, className }: { value: number; big?: boolean; c
       <span className={cx('font-display font-bold tabular', big ? 'text-3xl' : 'text-base')}>
         {btc.toLocaleString('fr-FR', { maximumFractionDigits: 8 })} <span className="font-sans text-base font-semibold text-btc-ink">BTC</span>
       </span>
-      <span className="text-xs tabular text-muted">{sats(value)} sats · regtest</span>
+      <span className="text-xs tabular text-muted">{sats(value)} sats</span>
     </div>
   )
 }

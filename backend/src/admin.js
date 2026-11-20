@@ -17,6 +17,7 @@ const { nodeSnapshot, walletName } = require('./chain');
 const { fail, now } = v;
 const { alerts } = require('./alerts');
 const { serviceRating } = require('./courier-metrics');
+const { accountBalance, lockedBalance } = require('./account-balance');
 
 const router = express.Router();
 router.use('/admin', requireAdmin);
@@ -102,17 +103,17 @@ function userRows(q) {
 
 /** Solde disponible (sats) du portefeuille regtest de l'utilisateur, 0 si pas encore créé. */
 async function walletBalance(userId) {
-  try {
-    const name = walletName({ id: userId });
-    if (!(await bitcoin.chain.walletExists(name))) return 0;
-    return (await bitcoin.chain.walletInfo(name)).balances.trusted_sat;
-  } catch {
-    return 0;
-  }
+  return accountBalance(userId);
 }
 
 async function withWalletBalance(users) {
-  return Promise.all(users.map(async (u) => ({ ...u, wallet_sat: await walletBalance(u.id) })));
+  return Promise.all(users.map(async (u) => {
+    const availableSat = await walletBalance(u.id);
+    const name = walletName({ id: u.id });
+    let totalSat = availableSat;
+    const lockedSat = lockedBalance(u.id);
+    return { ...u, wallet_sat: availableSat, available_sat: availableSat, total_sat: totalSat, locked_sat: lockedSat };
+  }));
 }
 
 const csvCell = (x) => {
@@ -125,10 +126,10 @@ const csvCell = (x) => {
 router.get('/admin/users', async (req, res) => {
   const users = await withWalletBalance(userRows(String(req.query.q || '').trim()));
   if (req.query.format === 'csv') {
-    const head = ['id', 'nom', 'email', 'telephone', 'boutique', 'admin', 'suspendu', 'bot', 'inscrit_le', 'solde_disponible_sat', 'note_vendeur', 'note_livreur', 'note_client', 'ventes', 'achats', 'refus', 'absences', 'livraisons'];
+    const head = ['id', 'nom', 'email', 'telephone', 'boutique', 'admin', 'suspendu', 'bot', 'inscrit_le', 'solde_total_sat', 'solde_disponible_sat', 'fonds_bloques_sat', 'note_vendeur', 'note_livreur', 'note_client', 'ventes', 'achats', 'refus', 'absences', 'livraisons'];
     const lines = users.map((u) =>
       [u.id, u.name, u.email, u.phone, u.shop_name, u.is_admin ? 'oui' : 'non', u.is_suspended ? 'oui' : 'non', u.is_bot ? 'oui' : 'non', new Date(u.created_at * 1000).toISOString(),
-        u.wallet_sat, u.ratings.vendeur.avg ?? '', u.ratings.livreur.avg ?? '', u.ratings.client.avg ?? '', u.sales, u.purchases, u.refusals, u.absences, u.deliveries]
+        u.total_sat, u.available_sat, u.locked_sat, u.ratings.vendeur.avg ?? '', u.ratings.livreur.avg ?? '', u.ratings.client.avg ?? '', u.sales, u.purchases, u.refusals, u.absences, u.deliveries]
         .map(csvCell)
         .join(';'),
     );

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { Bike, Check, Clock, LogOut, MapPin, Navigation, Package, Power, Satellite, ScanLine, UserX, Wallet, X } from 'lucide-react'
+import { Bike, Check, Clock, Copy, LogOut, MapPin, Navigation, Package, Power, Satellite, ScanLine, UserX, Wallet, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Amount } from '../../components/Amount'
 import { FleetMap, TrackMap } from '../../components/Maps'
@@ -10,7 +10,6 @@ import { api, ApiError, type CourierMe } from '../../lib/api'
 import { dateTime } from '../../lib/format'
 import { usePoll } from '../../lib/usePoll'
 import { PageHeader } from './AppLayout'
-import { ReviewBox } from './Purchases'
 
 export default function Courier() {
   const { data, reload } = usePoll<CourierMe>('/api/courier/me', 2000)
@@ -165,7 +164,7 @@ function OfferModal({ offer, onChange }: { offer: NonNullable<CourierMe['offer']
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] grid place-items-center bg-black/60 p-4">
       <motion.div initial={{ scale: 0.9, y: 20, opacity: 0 }} animate={{ scale: 1, y: 0, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="w-full max-w-sm overflow-hidden rounded-3xl bg-surface shadow-float">
         <div className="relative h-1.5 w-full bg-subtle">
           <motion.div className="absolute inset-y-0 left-0 bg-brand" initial={false} animate={{ width: `${(left / 30) * 100}%` }} transition={{ ease: 'linear', duration: 1 }} />
@@ -229,8 +228,6 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
         <Amount value={order.fee_sat} className="ml-auto items-end" />
       </div>
 
-      <TrackMap shop={order.shop} delivery={order.delivery} courier={order.courier?.position} />
-
       {order.status === 'assigned' && (
         <div className="flex flex-col gap-3">
           <Button loading={busy === 'pickup'} onClick={() => run('pickup', () => api(`/api/orders/${order.id}/pickup`, { method: 'POST' }), 'Colis récupéré')}>
@@ -244,14 +241,30 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
 
       {order.status === 'picked_up' && (
         <div className="flex flex-col gap-3">
-          <Field
-            label="Code de livraison du client"
-            icon={<ScanLine className="h-4 w-4" />}
-            value={code}
-            onChange={(e) => setCode(e.target.value.trim())}
-            placeholder="Scanné ou saisi (64 caractères)"
-            className="[&_input]:font-mono [&_input]:text-xs"
-          />
+          <div className="flex items-end gap-2">
+            <Field
+              label="Code de livraison du client"
+              icon={<ScanLine className="h-4 w-4" />}
+              value={code}
+              onChange={(e) => setCode(e.target.value.trim())}
+              placeholder="Collez le code copié chez le client"
+              className="min-w-0 flex-1 [&_input]:font-mono [&_input]:text-xs"
+            />
+            <Button
+              variant="secondary"
+              className="mb-0 h-11"
+              onClick={async () => {
+                try {
+                  setCode(await navigator.clipboard.readText())
+                  toast('Code lu depuis le presse-papiers')
+                } catch {
+                  toast('Autorisez l’accès au presse-papiers', 'error')
+                }
+              }}
+            >
+              <Copy className="h-4 w-4" /> Coller
+            </Button>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <Button loading={busy === 'deliver'} disabled={!code} onClick={() => run('deliver', () => api(`/api/orders/${order.id}/deliver`, { body: { code } }), 'Livraison confirmée : vous êtes payé')}>
               <Check className="h-4 w-4" /> Valider la remise
@@ -270,12 +283,7 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
       {['returning', 'return_pending'].includes(order.status) && <p className="rounded-xl bg-subtle px-4 py-3 text-sm text-muted">Ramenez le colis à la boutique. Les frais vous seront versés à la confirmation du vendeur.</p>}
       {order.status === 'return_payment_pending' && <p className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">Retour confirmé : paiement de vos frais en cours de confirmation.</p>}
 
-      {['delivered', 'returning', 'return_pending', 'returned', 'return_payment_pending'].includes(order.status) && (
-        <div className="rounded-xl border border-line p-4">
-          <p className="mb-2 text-sm font-semibold">Votre avis sur le client</p>
-          <ReviewBox order={order} target="client" label={order.buyer?.name ?? 'le client'} canReview={order.can_review.client} mine={order.my_reviews.client} onChange={onChange} />
-        </div>
-      )}
+      <TrackMap shop={order.shop} delivery={order.delivery} courier={order.courier?.position} />
 
       <AnimatePresence>
         {absentOpen && (

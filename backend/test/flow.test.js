@@ -563,8 +563,34 @@ test('portefeuille : 101 blocs → 50 BTC, envoi, mempool, confirmation', async 
   assert.equal(r.status, 404, 'createwallet d’abord');
   expectStatus(await seller.post('/api/wallet/create'), 201);
   expectStatus(await buyer.post('/api/wallet/create'), 201);
+  let buyerWallet = expectStatus(await buyer.get('/api/wallet'), 200);
+  assert.equal(typeof buyerWallet.balances.total_sat, 'number');
+  assert.equal(typeof buyerWallet.balances.available_sat, 'number');
+  assert.equal(buyerWallet.balances.locked_sat, 0);
   const addr = expectStatus(await seller.post('/api/wallet/address'), 200).address;
   assert.match(addr, /^bcrt1q[02-9ac-hj-np-z]{30,}$/);
+
+  const firstAddress = addr;
+  const secondAddress = expectStatus(await seller.post('/api/wallet/address'), 200).address;
+  assert.notEqual(secondAddress, firstAddress);
+  const withAddresses = expectStatus(await seller.get('/api/wallet'), 200);
+  assert.ok(withAddresses.addresses.includes(firstAddress), 'la première adresse doit être conservée');
+  assert.ok(withAddresses.addresses.includes(secondAddress), 'la nouvelle adresse doit être conservée');
+
+  const secondWallet = expectStatus(await seller.post('/api/wallet/create', { label: 'Épargne' }), 201);
+  let switched = expectStatus(await seller.post('/api/wallet/switch', { wallet_id: secondWallet.id }), 200);
+  assert.equal(switched.name, secondWallet.name);
+  switched = expectStatus(await seller.get('/api/wallet'), 200);
+  assert.equal(switched.wallets.find((w) => w.active).label, 'Épargne');
+
+  const funded = expectStatus(await seller.post('/api/wallet/buy', { amount_sat: 900 }), 201);
+  assert.equal(funded.amount_sat, 900);
+  switched = expectStatus(await seller.get('/api/wallet'), 200);
+  assert.equal(switched.balances.trusted_sat, 900, 'achat simulé immédiatement disponible');
+
+  const principal = switched.wallets.find((w) => w.label === 'Principal');
+  assert.ok(principal);
+  expectStatus(await seller.post('/api/wallet/switch', { wallet_id: principal.id }), 200);
 
   expectStatus(await seller.post('/api/wallet/mine', { blocks: 100 }), 200);
   let w = expectStatus(await seller.get('/api/wallet'), 200);
@@ -655,6 +681,8 @@ test('admin : statistiques, dispatch, refus comptés, modération, système', as
   assert.equal(u.length, 1);
   assert.equal(u[0].refusals, 1, 'refus comptés par client');
   assert.equal(u[0].absences, 1);
+  assert.equal(u[0].wallet_sat, u[0].available_sat);
+  assert.equal(typeof u[0].available_sat, 'number');
   assert.deepEqual(u[0].ratings.client, { avg: 3.5, count: 2 });
   const csv = await admin.get('/api/admin/users?format=csv');
   assert.match(csv.headers.get('content-type'), /text\/csv/);
@@ -708,6 +736,14 @@ test('admin : un compte administrateur n’a pas les droits d’un utilisateur',
   r = await admin.get('/api/stats');
   assert.equal(r.status, 403);
   r = await admin.post('/api/courier/status', { status: 'available', mode: 'sim', ...PLATEAU });
+  assert.equal(r.status, 403);
+  r = await admin.get('/api/wallet');
+  assert.equal(r.status, 403);
+  r = await admin.post('/api/wallet/create');
+  assert.equal(r.status, 403);
+  r = await admin.get('/api/btc/chain');
+  assert.equal(r.status, 403);
+  r = await admin.get('/api/ln/nodes');
   assert.equal(r.status, 403);
   // Les routes d'administration restent accessibles.
   expectStatus(await admin.get('/api/admin/stats'), 200);

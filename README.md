@@ -46,6 +46,10 @@ Si le client refuse le colis ou est absent, `cancel(A)` rend le prix à l'achete
 - **Console Lightning** : les 3 nœuds (alice, bob, carol), canaux avec barres de liquidité, création/décodage/paiement de factures, vérification SHA-256(preimage) = payment_hash dans le navigateur.
 - **Explorateur** : hauteur, mempool, derniers blocs, détail d'un bloc.
 - **Administration** : vue d'ensemble, utilisateurs (export CSV, suspension, refus comptés), commandes et litiges (remboursement, paiement/annulation des frais, remboursement des frais par le vendeur), carte de tous les livreurs (dispatch), modération, santé du système, journal d'audit complet.
+- **Séparation des rôles** : un administrateur est limité à l'administration ; il ne peut pas acheter, vendre, livrer ou utiliser les portefeuilles Bitcoin des utilisateurs.
+- **Solde utilisateur** : la liste d'administration affiche pour chaque compte son solde Bitcoin total disponible (`trusted_sat`), hors montants non confirmés ou immature ; elle exporte aussi ce montant dans le CSV.
+- **Commande et solde** : dès qu’une commande est payée, son montant est déduit du solde total du compte acheteur et reste indiqué séparément comme bloqué. Après livraison réussie, la dépense est définitivement enregistrée. Après refus ou annulation, l’article remboursé revient dans le solde total selon l’état de la commande.
+- **Initialisation de démonstration** : Awa Couture, Fatou Ndiaye et Moussa Sarr commencent chacun avec 2 000 000 sats. Les règlements vendeurs, les frais livreurs et les remboursements mettent automatiquement à jour leur solde applicatif.
 
 Toute l'interface est en français ; tous les montants sont affichés en BTC avec l'équivalent FCFA en direct (parité 1 € = 655,957 FCFA).
 
@@ -93,7 +97,7 @@ Canaux : **alice → bob** (2 000 000 sats) et **bob → carol** (1 000 000 sats
 
 - `LND_MODE=mock` (par défaut) : réseau Lightning simulé en mémoire, qui se comporte comme LND (hold invoices, HTLC, recherche de chemin par parcours en largeur, liquidité qui se déplace, erreurs de liquidité insuffisante). `LND_MODE=lnd` bascule sur de vrais nœuds LND (Polar) via `ln-service`.
 - `BTC_MODE=mock` (par défaut) : chaîne regtest simulée qui respecte les règles du regtest (50 BTC/bloc, halving tous les 150 blocs, maturité coinbase à 101 blocs, mempool, frais de 141 sats). `BTC_MODE=rpc` bascule sur un vrai `bitcoind` (Polar).
-- `SIMULATION=true` (par défaut) : 6 livreurs fictifs se déplacent dans Dakar, acceptent 85 % des offres après 3 s, pour que la démo soit vivante sans personne pour jouer le livreur.
+- `SIMULATION=false` (par défaut) : aucun livreur fictif n’est créé. Les courses sont affectées uniquement aux comptes réels disponibles ; dans la démo, Moussa Sarr joue ce rôle.
 
 **Basculer sur Polar ne demande que de modifier `backend/.env`** (`LND_MODE=lnd`, `BTC_MODE=rpc`) : le reste du code est strictement identique.
 
@@ -123,7 +127,7 @@ Ouvrez **http://localhost:5173**. Des comptes de démonstration sont créés aut
 |---|---|
 | Vendeuse (boutique « Awa Couture », placée à Médina) | `awa@demo.kaaraange.sn` |
 | Acheteuse | `fatou@demo.kaaraange.sn` |
-| Livreur (compte réel, en plus des 6 livreurs simulés) | `moussa@demo.kaaraange.sn` |
+| Livreur | `moussa@demo.kaaraange.sn` |
 
 Il n'y a **pas de compte admin tout prêt** : `admin@kaaraange.sn` (la valeur par défaut de `ADMIN_EMAIL` dans `.env.example`) n'existe pas tant que personne ne s'inscrit avec cette adresse. Pour obtenir un compte administrateur, **inscrivez-vous** (pas « se connecter ») avec cet e-mail — il est promu admin automatiquement dès l'inscription.
 
@@ -139,9 +143,9 @@ Il n'y a **pas de compte admin tout prêt** : `admin@kaaraange.sn` (la valeur pa
 1. **Landing page** (30 s) — cours BTC en direct, section « Fonctionnement » : deux factures, un seul scan.
 2. **Inscription vendeuse** (30 s) → *Ma boutique* : placer le point sur la carte (Médina), ajouter un article à 25 000 sats.
 3. **Connexion acheteuse** (`fatou@demo.kaaraange.sn`) → *Acheter* → choisir l'article → placer le point de livraison sur la carte (Plateau) → voir le devis en direct (distance, frais, total) → **Payer**. Montrer que le statut passe à « Recherche d'un livreur ».
-4. **Espace admin → Dispatch** : la carte montre les livreurs simulés qui se déplacent ; l'un d'eux reçoit une offre de 30 s, l'accepte, se dirige vers la boutique.
+4. **Espace livreur Moussa** : connectez-vous à `moussa@demo.kaaraange.sn`, passez en ligne, acceptez l’offre de 30 s et dirigez-vous vers la boutique.
 5. **Mes achats** (acheteuse) : la carte montre le livreur en direct ; le QR du code de livraison.
-6. **Suite automatique (mode simulé)** : le livreur fictif récupère le colis puis attend ; **scanner/saisir le code** (bouton « J'ai reçu mon colis ») → règlements successifs du vendeur et du livreur, avec reprise persistante. Montrer les deux factures « SETTLED » dans « Sous le capot ».
+6. **Avec Moussa** : après le retrait du colis, **scanner/saisir le code** (bouton « J'ai reçu mon colis ») → règlements successifs du vendeur et du livreur, avec reprise persistante.
 7. **Scénario de refus** : refaire un achat, le livreur récupère le colis, l'acheteuse **refuse** (motif « non conforme ») → le prix revient instantanément, les frais restent bloqués → le vendeur confirme le retour → le livreur est payé quand même.
 8. **Console Lightning** : montrer les 3 nœuds, les canaux alice→bob→bob→carol, payer une facture console et vérifier SHA-256(preimage) = payment_hash dans le navigateur.
 9. **Portefeuille** : miner 101 blocs, montrer les 50 BTC qui deviennent disponibles, envoyer une transaction.

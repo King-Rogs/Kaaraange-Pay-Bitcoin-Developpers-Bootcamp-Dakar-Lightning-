@@ -29,6 +29,10 @@ Le backend du prototype regtest couvre les comptes, le commerce, le séquestre �
 - [x] Protection des actions concurrentes et absence de nouveau débit lors d’une reprise.
 - [x] Reprise après arrêt brutal du processus entre règlement article et livraison.
 - [x] Portefeuilles Bitcoin, adresses, minage, transactions, confirmations, UTXO et explorateur par API.
+- [x] Séparation stricte administrateur/utilisateur : les administrateurs ne peuvent pas acheter, vendre, livrer ni créer ou utiliser un portefeuille utilisateur.
+- [x] Solde total disponible par compte dans l’administration (`trusted_sat`, hors soldes en attente ou immatures).
+- [x] Comptabilité du solde : paiement déduit immédiatement du total, montant bloqué jusqu’à livraison ou résolution, dépense confirmée conservée après livraison réussie et remboursement restauré après annulation ou refus confirmé.
+- [x] Comptes de démonstration initialisés à 2 000 000 sats et soldes vendeurs/livreurs/acheteurs actualisés automatiquement après règlement ou remboursement.
 - [x] Minage réel de 101 blocs avec délai adapté ; timeout signalé sans affirmer à tort que Core est arrêté.
 - [x] Jeu de simulation séparé, compte administrateur local et sauvegarde des données principales.
 - [x] Validation avec les vrais nœuds Fatou, Awa et Moussa, et vérification finale sans HTLC restant.

@@ -47,6 +47,8 @@ A et B sont deux règlements successifs : A est réglée avant B. La reprise per
 ## Fonctionnalités backend livrées
 
 - [x] Comptes polyvalents, sessions, mots de passe hachés, réinitialisation locale et droits administrateur.
+- [x] Administrateur séparé des droits utilisateur : commerce, livraison et portefeuille bloqués avec HTTP 403.
+- [x] Solde Bitcoin disponible agrégé par compte dans les listes et l’export CSV administrateur.
 - [x] Profil, boutique, articles, import d’images et catalogue public par API.
 - [x] Calcul serveur des devis, distances et frais ; montants en sats entiers.
 - [x] Deux hold invoices, paiement, blocage des fonds et vérification des états LND.

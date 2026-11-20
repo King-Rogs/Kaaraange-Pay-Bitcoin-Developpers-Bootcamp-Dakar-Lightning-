@@ -197,6 +197,16 @@ CREATE TABLE IF NOT EXISTS kv (
   k TEXT PRIMARY KEY,
   v TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS btc_wallets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  wallet_name TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  is_active INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_btc_wallets_user ON btc_wallets(user_id);
 `;
 
 let db = null;

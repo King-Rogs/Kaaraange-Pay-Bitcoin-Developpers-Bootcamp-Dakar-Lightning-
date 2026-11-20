@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowLeft, Check, ChevronRight, Package, QrCode, Star, Truck, X } from 'lucide-react'
+import { ArrowLeft, Check, ChevronRight, Copy, Package, QrCode, Star, Truck, X } from 'lucide-react'
 import { useState } from 'react'
 import { Amount } from '../../components/Amount'
 import { AppQr } from '../../components/AppQr'
@@ -175,7 +175,23 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
               <div className="mx-auto rounded-2xl border border-line bg-white p-3">
                 <AppQr value={code} size={160} />
               </div>
-              <div className="rounded-xl bg-subtle p-3 text-center font-mono text-sm tracking-wide">{groupCode(code)}</div>
+              <div className="flex items-center gap-2 rounded-xl bg-subtle p-3">
+                <span className="min-w-0 flex-1 text-center font-mono text-sm tracking-wide">{groupCode(code)}</span>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(code)
+                      toast('Code de livraison copié')
+                    } catch {
+                      toast('Impossible de copier le code', 'error')
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4" /> Copier
+                </Button>
+              </div>
             </>
           ) : (
             <p className="text-sm text-danger">Code introuvable sur cet appareil (navigateur différent ?) : demandez au livreur de passer par la confirmation du vendeur ou contactez l’administration.</p>
@@ -237,7 +253,8 @@ function RefuseModal({ order, onClose, onDone }: { order: Order; onClose: () => 
       <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} onClick={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-surface p-6">
         <h3 className="text-lg font-bold">Refuser le colis</h3>
         <p className="mt-1 text-sm text-muted">Le prix de l’article vous sera remboursé. Les frais de livraison restent dus au livreur qui s’est déplacé.</p>
-        <div className="mt-4 flex flex-col gap-2">
+        <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-danger">Motif obligatoire</p>
+        <div className="mt-2 flex flex-col gap-2">
           {Object.entries(REFUSE_REASONS).map(([key, label]) => (
             <label key={key} className="flex items-center gap-2.5 rounded-xl border border-line p-3 text-sm">
               <input type="radio" name="reason" checked={reason === key} onChange={() => setReason(key)} className="accent-[rgb(var(--brand))]" />
@@ -245,7 +262,7 @@ function RefuseModal({ order, onClose, onDone }: { order: Order; onClose: () => 
             </label>
           ))}
         </div>
-        <Field label="Commentaire (facultatif)" value={comment} onChange={(e) => setComment(e.target.value)} className="mt-4" />
+        <Field label="Commentaire explicatif (facultatif)" value={comment} onChange={(e) => setComment(e.target.value)} className="mt-4" />
         <div className="mt-5 grid grid-cols-2 gap-3">
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
           <Button variant="danger" loading={busy} disabled={!reason} onClick={submit}>Confirmer le refus</Button>

@@ -101,7 +101,7 @@ const config = {
   offerSeconds: num('OFFER_SECONDS', 30),
   articleMaxSat: num('ARTICLE_MAX_SAT', 1_000_000),
 
-  simulation: bool('SIMULATION', true),
+  simulation: bool('SIMULATION', false),
   simBots: num('SIM_BOTS', 6),
   simStepKm: num('SIM_STEP_KM', 0.25),
   simAcceptRate: num('SIM_ACCEPT_RATE', 0.85),

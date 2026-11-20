@@ -37,6 +37,7 @@ async function createServer({ loops = true } = {}) {
   }
   if (config.seedDemo) await seedDemo();
   if (config.simulation) dispatch.seedBots(config.simBots);
+  else dispatch.retireUnusedSimBots();
 
   const app = express();
   app.disable('x-powered-by');

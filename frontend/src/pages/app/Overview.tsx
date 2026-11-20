@@ -36,8 +36,8 @@ export default function Overview() {
 
       <Link to="/app/portefeuille" className="card relative mb-4 block overflow-hidden p-6 transition hover:border-brand/40">
         <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-btc/15 blur-3xl" aria-hidden />
-        <p className="text-sm font-medium text-muted">Solde disponible</p>
-        <Amount value={wallet?.exists ? wallet.balances?.trusted_sat ?? 0 : 0} big className="mt-2" />
+        <p className="text-sm font-medium text-muted">Solde total du compte</p>
+        <Amount value={wallet?.exists ? wallet.balances?.total_sat ?? wallet.balances?.trusted_sat ?? 0 : 0} big className="mt-2" />
       </Link>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

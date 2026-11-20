@@ -161,7 +161,7 @@ export default function AppLayout() {
         <SideNav />
         <div className="mt-auto shrink-0 rounded-2xl bg-subtle p-4">
           <p className="text-sm font-semibold">Mode démo</p>
-          <p className="mt-1 text-xs leading-relaxed text-muted">Les paiements passent par les nœuds Lightning de test (regtest). Aucun vrai bitcoin n’est utilisé.</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted">Les paiements passent par le réseau Lightning de test. Aucun vrai bitcoin n’est utilisé.</p>
         </div>
       </aside>
 
