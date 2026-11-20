@@ -1,4 +1,4 @@
-import { ArrowRight, Bike, Lock, Package, ShoppingBag, Store, Undo2, Wallet, Zap } from 'lucide-react'
+import { ArrowRight, Bike, Lock, Package, ShoppingBag, Store, Undo2, Wallet } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Amount } from '../../components/Amount'
@@ -71,8 +71,7 @@ export default function Overview() {
               { to: '/app/boutique', icon: <Store />, t: 'Mettre un article en vente', d: 'Ajoutez un produit et son prix' },
               { to: '/app/marche', icon: <ShoppingBag />, t: 'Acheter en toute sécurité', d: 'Parcourez les articles disponibles' },
               { to: '/app/livreur', icon: <Bike />, t: 'Passer en livreur', d: 'Activez-vous et recevez des offres' },
-              { to: '/app/portefeuille', icon: <Wallet />, t: 'Mon portefeuille Bitcoin', d: 'Créer, miner, envoyer en regtest' },
-              { to: '/app/lightning', icon: <Zap />, t: 'Console Lightning', d: 'Nœuds, canaux, factures, paiements' },
+              { to: '/app/portefeuille', icon: <Wallet />, t: 'Mon portefeuille Bitcoin', d: 'Acheter, recevoir, envoyer' },
             ].map((a) => (
               <Link key={a.to} to={a.to} className="group flex items-center gap-4 rounded-xl border border-line p-4 transition hover:border-brand/40 hover:bg-subtle">
                 <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-soft text-brand [&>svg]:h-5 [&>svg]:w-5">{a.icon}</span>

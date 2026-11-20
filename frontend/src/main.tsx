@@ -5,13 +5,13 @@ import '@fontsource/space-grotesk/700.css'
 import 'leaflet/dist/leaflet.css'
 import './index.css'
 
-import { StrictMode, useEffect } from 'react'
+import { StrictMode, useEffect, type ReactNode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom'
-import { AuthProvider } from './context/AuthContext'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { ToastProvider } from './context/ToastContext'
-import { LinkButton } from './components/ui'
+import { LinkButton, Spinner } from './components/ui'
 import { Logo } from './components/Logo'
 import Landing from './pages/Landing'
 import { Forgot, Login, Register, Reset } from './pages/Auth'
@@ -23,8 +23,15 @@ import Purchases from './pages/app/Purchases'
 import Courier from './pages/app/Courier'
 import Profile from './pages/app/Profile'
 import WalletPage from './pages/app/Wallet'
-import Lightning from './pages/app/Lightning'
 import { AdminArticles, AdminAudit, AdminDispatch, AdminGuard, AdminOrders, AdminOverview, AdminSystem, AdminUsers } from './pages/app/Admin'
+
+/** La landing page est réservée aux visiteurs : un compte connecté est renvoyé vers son espace. */
+function GuestOnly({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
+  if (loading) return <div className="grid min-h-screen place-items-center"><Spinner className="h-7 w-7" /></div>
+  if (user) return <Navigate to="/app" replace />
+  return <>{children}</>
+}
 
 function ScrollTop() {
   const { pathname, hash } = useLocation()
@@ -57,7 +64,7 @@ createRoot(document.getElementById('root')!).render(
           <BrowserRouter>
             <ScrollTop />
             <Routes>
-              <Route path="/" element={<Landing />} />
+              <Route path="/" element={<GuestOnly><Landing /></GuestOnly>} />
               <Route path="/connexion" element={<Login />} />
               <Route path="/inscription" element={<Register />} />
               <Route path="/mot-de-passe-oublie" element={<Forgot />} />
@@ -70,7 +77,6 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="livreur" element={<Courier />} />
                 <Route path="profil" element={<Profile />} />
                 <Route path="portefeuille" element={<WalletPage />} />
-                <Route path="lightning" element={<Lightning />} />
                 <Route path="admin" element={<AdminGuard><AdminOverview /></AdminGuard>} />
                 <Route path="admin/utilisateurs" element={<AdminGuard><AdminUsers /></AdminGuard>} />
                 <Route path="admin/commandes" element={<AdminGuard><AdminOrders /></AdminGuard>} />
