@@ -94,6 +94,7 @@ export type OrderStatus =
   | 'searching_courier'
   | 'assigned'
   | 'picked_up'
+  | 'buyer_accepted'
   | 'delivered'
   | 'returning'
   | 'returned'
@@ -157,6 +158,7 @@ export type Order = {
   paid_at: number | null
   assigned_at: number | null
   picked_up_at: number | null
+  buyer_accepted_at: number | null
   delivered_at: number | null
   returning_at: number | null
   returned_at: number | null

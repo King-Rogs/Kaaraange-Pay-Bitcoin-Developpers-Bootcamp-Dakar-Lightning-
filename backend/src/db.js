@@ -220,7 +220,7 @@ function open(file) {
   db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 3000;');
   db.exec(SCHEMA);
   for (const [table, fields] of Object.entries({
-    orders: [['fee_refund_request', 'TEXT'], ['fee_refund_error', 'TEXT'], ['fee_refund_attempt_at', 'INTEGER'], ['return_deadline_at', 'INTEGER']],
+    orders: [['fee_refund_request', 'TEXT'], ['fee_refund_error', 'TEXT'], ['fee_refund_attempt_at', 'INTEGER'], ['return_deadline_at', 'INTEGER'], ['buyer_accepted_at', 'INTEGER']],
     articles: [['image', 'TEXT']],
   })) {
     const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name));

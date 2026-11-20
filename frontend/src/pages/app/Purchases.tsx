@@ -29,6 +29,7 @@ const STEPS = [
   { key: 'searching_courier', label: 'Recherche d’un livreur' },
   { key: 'assigned', label: 'Livreur en route' },
   { key: 'picked_up', label: 'Colis en livraison' },
+  { key: 'buyer_accepted', label: 'Colis accepté' },
   { key: 'delivered', label: 'Livré' },
 ]
 // 'delivery_pending' : la remise a été enregistrée, la confirmation Lightning est en cours —
@@ -106,15 +107,11 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
   const distanceToMe = courierPos ? distanceKm(courierPos, order.delivery) : null
   const courierArrived = distanceToMe != null && distanceToMe <= ARRIVAL_RADIUS_KM
 
-  async function receive() {
-    if (!code) {
-      toast('Code de livraison introuvable sur cet appareil.', 'error')
-      return
-    }
+  async function acceptDelivery() {
     setBusy('deliver')
     try {
-      const r = await api<{ order: Order }>(`/api/orders/${order.id}/deliver`, { body: { code } })
-      toast(r.order.financial_pending ? 'Remise enregistrée : confirmation du paiement en cours' : 'Livraison confirmée : vendeur et livreur sont payés')
+      await api<{ order: Order }>(`/api/orders/${order.id}/accept-delivery`, { method: 'POST' })
+      toast('Colis accepté : le livreur doit maintenant scanner votre QR code')
       onChange()
     } catch (err) {
       toast(err instanceof ApiError ? err.message : 'Erreur', 'error')
@@ -154,7 +151,7 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
         )}
       </div>
 
-      {['assigned', 'picked_up', 'delivery_pending'].includes(order.status) && order.courier && (
+      {['assigned', 'picked_up', 'buyer_accepted', 'delivery_pending'].includes(order.status) && order.courier && (
         <SectionCard title="Livreur en direct" icon={<Truck />} className="mb-6">
           <div className="flex items-center gap-3">
             <Avatar name={order.courier.name} url={order.courier.avatar_url} size={40} />
@@ -167,7 +164,7 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
         </SectionCard>
       )}
 
-      {['searching_courier', 'assigned', 'picked_up', 'delivery_pending'].includes(order.status) && (
+      {['searching_courier', 'assigned', 'picked_up', 'buyer_accepted', 'delivery_pending'].includes(order.status) && (
         <SectionCard title="Code de livraison" icon={<QrCode />} className="mb-6">
           {code ? (
             <>
@@ -200,8 +197,8 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
           {order.status === 'picked_up' &&
             (courierArrived ? (
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Button className="flex-1" loading={busy === 'deliver'} disabled={!code} onClick={receive}>
-                  <Check className="h-4 w-4" /> J’ai reçu mon colis
+                <Button className="flex-1" loading={busy === 'deliver'} onClick={acceptDelivery}>
+                  <Check className="h-4 w-4" /> Accepter le colis
                 </Button>
                 <Button variant="danger" className="flex-1" onClick={() => setRefuseOpen(true)}>
                   <X className="h-4 w-4" /> Refuser le colis
@@ -212,6 +209,7 @@ function OrderDetail({ order, onBack, onChange }: { order: Order; onBack: () => 
                 {distanceToMe != null ? `Le livreur arrive (encore ${distanceToMe.toFixed(1)} km)` : 'En attente de la position du livreur'} : vous pourrez confirmer la réception ou refuser le colis une fois qu’il sera sur place.
               </p>
             ))}
+          {order.status === 'buyer_accepted' && <p className="rounded-xl bg-brand-soft px-4 py-3 text-center text-sm text-brand">Colis accepté. Le livreur doit scanner ce QR code ou saisir la clé pour finaliser la livraison.</p>}
         </SectionCard>
       )}
 

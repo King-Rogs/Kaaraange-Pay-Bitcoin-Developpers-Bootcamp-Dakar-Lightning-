@@ -9,7 +9,7 @@ function accountBalance(userId) {
 
   const buyer = db.one(
     `SELECT
-       COALESCE(SUM(CASE WHEN status IN ('searching_courier','assigned','picked_up','delivery_pending') THEN item_sat + fee_sat ELSE 0 END), 0) AS active_spend,
+       COALESCE(SUM(CASE WHEN status IN ('searching_courier','assigned','picked_up','buyer_accepted','delivery_pending') THEN item_sat + fee_sat ELSE 0 END), 0) AS active_spend,
        COALESCE(SUM(CASE WHEN status = 'delivered' AND item_state = 'SETTLED' THEN item_sat ELSE 0 END), 0) AS delivered_items,
        COALESCE(SUM(CASE WHEN status = 'delivered' AND fee_state = 'SETTLED' THEN fee_sat ELSE 0 END), 0) AS delivered_fees,
        COALESCE(SUM(CASE WHEN status IN ('returning','return_pending','return_payment_pending','returned') AND fee_state = 'SETTLED' AND fee_refunded_at IS NULL THEN fee_sat ELSE 0 END), 0) AS unpaid_return_fees
@@ -34,8 +34,8 @@ function accountBalance(userId) {
 function lockedBalance(userId) {
   return db.one(
     `SELECT COALESCE(SUM(
-       CASE WHEN item_state = 'ACCEPTED' AND status IN ('searching_courier','assigned','picked_up','return_pending') THEN item_sat ELSE 0 END +
-       CASE WHEN fee_state = 'ACCEPTED' AND status IN ('searching_courier','assigned','picked_up','returning','return_pending','return_payment_pending') THEN fee_sat ELSE 0 END
+       CASE WHEN item_state = 'ACCEPTED' AND status IN ('searching_courier','assigned','picked_up','buyer_accepted','return_pending') THEN item_sat ELSE 0 END +
+       CASE WHEN fee_state = 'ACCEPTED' AND status IN ('searching_courier','assigned','picked_up','buyer_accepted','returning','return_pending','return_payment_pending') THEN fee_sat ELSE 0 END
      ), 0) s FROM orders WHERE buyer_id = ?`,
     userId,
   ).s;

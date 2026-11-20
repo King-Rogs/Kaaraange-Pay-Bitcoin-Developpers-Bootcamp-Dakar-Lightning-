@@ -248,7 +248,7 @@ function moveSim() {
       if (!o) continue;
       let target = null;
       if (o.status === 'assigned' || o.status === 'returning') target = { lat: o.shop_lat, lng: o.shop_lng };
-      else if (o.status === 'picked_up') target = { lat: o.delivery_lat, lng: o.delivery_lng };
+      else if (o.status === 'picked_up' || o.status === 'buyer_accepted') target = { lat: o.delivery_lat, lng: o.delivery_lng };
       if (!target) continue;
       const p = moveToward(c, target, config.simStepKm);
       db.update('couriers', c.user_id, { lat: p.lat, lng: p.lng, location_at: now() }, 'user_id');
@@ -354,7 +354,7 @@ function adminSnapshot() {
     `SELECT f.*, u.name AS courier_name, o.title FROM offers f JOIN users u ON u.id = f.courier_id JOIN orders o ON o.id = f.order_id
      ORDER BY f.id DESC LIMIT 60`,
   );
-  const active = db.all("SELECT * FROM orders WHERE status IN ('searching_courier','assigned','picked_up','returning') ORDER BY id DESC");
+  const active = db.all("SELECT * FROM orders WHERE status IN ('searching_courier','assigned','picked_up','buyer_accepted','returning') ORDER BY id DESC");
   return {
     couriers: couriers.map((c) => ({
       user: publicUser({ id: c.user_id, name: c.name, avatar: c.avatar, is_bot: c.is_bot, is_demo: c.is_demo, shop_name: '' }),

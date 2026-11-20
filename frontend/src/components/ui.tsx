@@ -110,6 +110,7 @@ const STATUS: Record<OrderStatus, { label: string; cls: string; pulse?: boolean 
   searching_courier: { label: 'Recherche d’un livreur', cls: 'bg-warn-soft text-warn' },
   assigned: { label: 'Livreur en route', cls: 'bg-warn-soft text-warn' },
   picked_up: { label: 'Colis en livraison', cls: 'bg-warn-soft text-warn' },
+  buyer_accepted: { label: 'Colis accepté · validation livreur', cls: 'bg-brand-soft text-brand' },
   delivered: { label: 'Livré · payé', cls: 'bg-brand-soft text-brand' },
   returning: { label: 'Retour en cours', cls: 'bg-danger-soft text-danger' },
   returned: { label: 'Retourné', cls: 'bg-danger-soft text-danger' },

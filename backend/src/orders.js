@@ -22,7 +22,7 @@ const actions = require('./order-actions');
 const { incident, serviceRating } = require('./courier-metrics');
 const { fail, now, haversine, sha256hex, randomHex, isHex64, round } = v;
 
-const IN_ESCROW = ['searching_courier', 'assigned', 'picked_up'];
+const IN_ESCROW = ['searching_courier', 'assigned', 'picked_up', 'buyer_accepted'];
 const OPEN_STATUSES = ['awaiting_payment', ...IN_ESCROW, 'returning', ...Object.values(actions.pendingStatus)];
 const REFUSE_REASONS = {
   non_conforme: 'Produit non conforme',
@@ -136,6 +136,7 @@ function view(o, viewer) {
     paid_at: o.paid_at,
     assigned_at: o.assigned_at,
     picked_up_at: o.picked_up_at,
+    buyer_accepted_at: o.buyer_accepted_at,
     delivered_at: o.delivered_at,
     returning_at: o.returning_at,
     returned_at: o.returned_at,
@@ -231,7 +232,7 @@ async function tick() {
     const r = await refresh(o);
     if (r.status === 'awaiting_payment' && r.invoice_expires_at < now() - 5) await cancelOrder(r, 'facture_expiree', null, 'commande.annulation_auto');
   }
-  for (const o of db.all("SELECT * FROM orders WHERE status IN ('searching_courier','assigned','picked_up') AND deadline_at < ?", now())) {
+  for (const o of db.all("SELECT * FROM orders WHERE status IN ('searching_courier','assigned','picked_up','buyer_accepted') AND deadline_at < ?", now())) {
     await cancelOrder(o, 'delai_depasse', null, 'commande.remboursement_auto');
   }
   for (const o of db.all("SELECT * FROM orders WHERE status = 'returning' AND return_deadline_at < ?", now())) {
@@ -474,11 +475,24 @@ router.post('/orders/:id/pickup', (req, res) => {
   res.json({ order: view(getOrder(o.id), req.user) });
 });
 
-/** Un seul scan, deux paiements : settle(A) avec le code du client, puis settle(B). */
+router.post('/orders/:id/accept-delivery', (req, res) => {
+  const o = loadForUser(req, req.params.id);
+  if (o.buyer_id !== req.user.id) fail(403, 'Seul le client peut accepter la remise.');
+  if (o.status !== 'picked_up') fail(409, 'L’acceptation est possible uniquement pendant la livraison.');
+  const c = courierPosition(o.courier_id);
+  if (haversine(c.lat, c.lng, o.delivery_lat, o.delivery_lng) > config.absentRadiusKm) {
+    fail(400, 'Le livreur doit être arrivé au point de livraison avant votre acceptation.', 'position');
+  }
+  db.update('orders', o.id, { status: 'buyer_accepted', buyer_accepted_at: now() });
+  db.audit(req.user.id, 'commande.remise_acceptee', `order:${o.id}`, null, req.ip);
+  res.json({ order: view(getOrder(o.id), req.user) });
+});
+
+/** Le client accepte d’abord, puis le livreur scanne/saisit le code pour régler les deux factures. */
 router.post('/orders/:id/deliver', async (req, res) => {
   const o = loadForUser(req, req.params.id);
-  if (o.courier_id !== req.user.id && o.buyer_id !== req.user.id) fail(403, 'Seuls le livreur et le client peuvent valider la remise.');
-  if (!['picked_up', 'delivery_pending', 'delivered'].includes(o.status)) fail(409, 'Le colis ne peut pas être remis à cette étape.');
+  if (o.courier_id !== req.user.id) fail(403, 'Seul le livreur peut clôturer la remise.');
+  if (!['buyer_accepted', 'delivery_pending', 'delivered'].includes(o.status)) fail(409, 'Le client doit d’abord accepter le colis.');
   const code = String((req.body || {}).code || '').trim().toLowerCase().replace(/^kaaraange:/, '').replace(/\s+/g, '');
   if (!isHex64(code)) fail(400, 'Code de livraison invalide : 64 caractères hexadécimaux attendus.', 'code');
   if (sha256hex(Buffer.from(code, 'hex')) !== o.item_hash) {
@@ -493,7 +507,7 @@ router.post('/orders/:id/deliver', async (req, res) => {
 router.post('/orders/:id/refuse', async (req, res) => {
   const o = loadForUser(req, req.params.id);
   if (o.buyer_id !== req.user.id) fail(403, 'Seul le client peut refuser le colis.');
-  if (o.status !== 'picked_up') fail(409, 'Le refus est possible uniquement pendant la livraison.');
+  if (o.status !== 'picked_up') fail(409, 'Le refus est possible avant l’acceptation du colis.');
   const b = req.body || {};
   if (!REFUSE_REASONS[b.reason]) fail(400, 'Choisissez un motif de refus.', 'reason');
   const comment = v.text(b.comment, { field: 'comment', label: 'Le commentaire', max: 300 });

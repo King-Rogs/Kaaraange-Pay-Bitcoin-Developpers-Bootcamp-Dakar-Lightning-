@@ -240,7 +240,12 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
       )}
 
       {order.status === 'picked_up' && (
+        <p className="rounded-xl bg-warn-soft px-4 py-3 text-sm text-warn">Présentez-vous chez le client. Il doit accepter le colis avant que vous puissiez le valider par QR code ou clé.</p>
+      )}
+
+      {order.status === 'buyer_accepted' && (
         <div className="flex flex-col gap-3">
+          <p className="rounded-xl bg-brand-soft px-4 py-3 text-sm text-brand">Le client a accepté le colis. Scannez son QR code ou saisissez sa clé pour clôturer la livraison.</p>
           <div className="flex items-end gap-2">
             <Field
               label="Code de livraison du client"
@@ -265,6 +270,7 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
               <Copy className="h-4 w-4" /> Coller
             </Button>
           </div>
+          <QrScanner onCode={setCode} />
           <div className="grid gap-3 sm:grid-cols-2">
             <Button loading={busy === 'deliver'} disabled={!code} onClick={() => run('deliver', () => api(`/api/orders/${order.id}/deliver`, { body: { code } }), 'Livraison confirmée : vous êtes payé')}>
               <Check className="h-4 w-4" /> Valider la remise
@@ -303,6 +309,64 @@ function ActiveRide({ order, radius, onChange }: { order: CourierMe['current']; 
       </AnimatePresence>
       <AnimatePresence>{abandonOpen && <AbandonModal order={order} onClose={() => setAbandonOpen(false)} onDone={onChange} />}</AnimatePresence>
     </SectionCard>
+  )
+}
+
+function QrScanner({ onCode }: { onCode: (code: string) => void }) {
+  const toast = useToast()
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const [active, setActive] = useState(false)
+
+  useEffect(() => {
+    if (!active) return
+    let stream: MediaStream | null = null
+    let timer: number | null = null
+    let stopped = false
+    const scan = async () => {
+      const Detector = (window as typeof window & { BarcodeDetector?: new (options?: { formats?: string[] }) => { detect(video: HTMLVideoElement): Promise<{ rawValue: string }[]> } }).BarcodeDetector
+      if (!Detector || !videoRef.current) {
+        toast('Scanner QR non disponible : saisissez la clé manuellement.', 'error')
+        setActive(false)
+        return
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+        if (!videoRef.current) return
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+        const detector = new Detector({ formats: ['qr_code'] })
+        const loop = async () => {
+          if (stopped || !videoRef.current) return
+          const codes = await detector.detect(videoRef.current)
+          if (codes[0]?.rawValue) {
+            onCode(codes[0].rawValue)
+            toast('QR code lu')
+            setActive(false)
+            return
+          }
+          timer = window.setTimeout(loop, 250)
+        }
+        loop()
+      } catch {
+        toast('Impossible d’accéder à la caméra. Saisissez la clé manuellement.', 'error')
+        setActive(false)
+      }
+    }
+    scan()
+    return () => {
+      stopped = true
+      if (timer != null) window.clearTimeout(timer)
+      stream?.getTracks().forEach((track) => track.stop())
+    }
+  }, [active, onCode, toast])
+
+  return (
+    <div className="flex flex-col gap-2">
+      <Button variant="secondary" onClick={() => setActive((value) => !value)}>
+        <ScanLine className="h-4 w-4" /> {active ? 'Fermer le scanner' : 'Scanner le QR du client'}
+      </Button>
+      {active && <video ref={videoRef} className="mx-auto aspect-square w-full max-w-xs rounded-2xl bg-black object-cover" muted playsInline />}
+    </div>
   )
 }
 

@@ -14,6 +14,7 @@ Dans `GET /api/wallet`, les soldes sont cohérents avec la règle suivante :
 - `balances.total_sat` : solde actuel du compte après les dépenses confirmées et les fonds bloqués.
 - Les trois comptes de démonstration commencent chacun avec exactement 2 000 000 sats : Awa Couture, Fatou Ndiaye et Moussa Sarr.
 - Après une commande payée : `total_sat = trusted_sat - locked_sat - dépenses_confirmées`.
+- Pendant `buyer_accepted`, le montant reste bloqué : l’acheteur a accepté le colis mais le livreur n’a pas encore validé la remise.
 - La livraison réussie conserve la dépense confirmée : le montant n’est plus disponible ni considéré comme bloqué.
 - Un refus ou une annulation rend le montant concerné : le montant remboursé revient au solde total.
 
@@ -79,7 +80,8 @@ Une commande peut donc être `returned` et avoir encore `fee_refund_status: "pen
 | Route POST | Acteur autorisé | Effet |
 |---|---|---|
 | `/api/orders/:id/pay` | Acheteur | Paiement des deux factures ; le backend déduplique les demandes simultanées. |
-| `/api/orders/:id/deliver` | Acheteur ou livreur affecté | Vérifie `code` et déclenche le règlement A puis B. |
+| `/api/orders/:id/accept-delivery` | Acheteur | Après l’arrivée du livreur, confirme l’acceptation du colis et passe la commande à `buyer_accepted`. |
+| `/api/orders/:id/deliver` | Livreur affecté | Après `buyer_accepted`, vérifie `code` (clé saisie ou QR scanné) et déclenche le règlement A puis B. |
 | `/api/orders/:id/refuse` | Acheteur | Reçoit `reason` parmi les motifs prévus et un commentaire facultatif ; démarre le retour. |
 | `/api/orders/:id/absent` | Livreur affecté | Vérifie sa proximité du point de livraison et démarre le retour. |
 | `/api/orders/:id/refund` | Vendeur | Reçoit `reason` de 3 à 300 caractères ; annule avant retrait, demande un retour après retrait. |
@@ -88,6 +90,6 @@ Une commande peut donc être `returned` et avoir encore `fee_refund_status: "pen
 | `/api/admin/orders/:id/refund` | Administrateur | Remboursement total avant remise avec `reason` obligatoire de 3 à 200 caractères. |
 | `/api/admin/orders/:id/refund-fee` | Administrateur | Réessaie le remboursement vendeur prévu, sans créer un deuxième débit. |
 
-Consulter `GET /api/orders/:id` pour actualiser l’état. Les états en attente sont `cancel_pending`, `delivery_pending`, `return_pending` et `return_payment_pending`. L’interface ne doit pas les annoncer comme un paiement ou un remboursement déjà confirmé.
+Consulter `GET /api/orders/:id` pour actualiser l’état. Le parcours de remise est `picked_up` → `buyer_accepted` → `delivered` (ou `delivery_pending` pendant la confirmation financière). Les états en attente sont `cancel_pending`, `delivery_pending`, `return_pending` et `return_payment_pending`. L’interface ne doit pas les annoncer comme un paiement ou un remboursement déjà confirmé.
 
 Les montants de l’API sont des entiers en sats (`item_sat`, `fee_sat`, etc.). Le devis fournit aussi `fee_xof` et `btc_xof`. La conversion BTC de l’interface respecte 100 000 000 sats par BTC.

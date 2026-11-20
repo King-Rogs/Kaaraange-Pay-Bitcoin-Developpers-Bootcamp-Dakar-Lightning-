@@ -30,7 +30,7 @@ Kaaraange Pay résout les trois problèmes à la fois avec un **séquestre Light
 | **A : article** | Prix du produit | Nœud du vendeur (`bob`) | Généré dans le **navigateur de l'acheteur**. Seul son hash SHA-256 est envoyé au serveur : c'est le **code de livraison**. |
 | **B : livraison** | Frais de livraison | Nœud du livreur (`carol`) | Généré et gardé **côté serveur**, jamais renvoyé par l'API. |
 
-À la remise, un seul scan du code de l'acheteur règle les deux factures : `settle(A)` avec le code scanné, puis `settle(B)` avec le secret serveur. Même en connaissant le secret B, personne ne peut détourner les fonds : B ne peut payer que le livreur.
+À l'arrivée du livreur, l'acheteur choisit **Accepter le colis** ou **Refuser** (avec motif). Après acceptation, le livreur scanne le QR code de l'acheteur ou saisit sa clé : un seul scan règle les deux factures (`settle(A)` puis `settle(B)`). Même en connaissant le secret B, personne ne peut détourner les fonds : B ne peut payer que le livreur.
 
 Si le client refuse le colis ou est absent, `cancel(A)` rend le prix à l'acheteur, et B reste bloquée jusqu'à ce que le vendeur confirme le retour du colis — le livreur est payé pour son déplacement dans tous les cas.
 
@@ -145,7 +145,7 @@ Il n'y a **pas de compte admin tout prêt** : `admin@kaaraange.sn` (la valeur pa
 3. **Connexion acheteuse** (`fatou@demo.kaaraange.sn`) → *Acheter* → choisir l'article → placer le point de livraison sur la carte (Plateau) → voir le devis en direct (distance, frais, total) → **Payer**. Montrer que le statut passe à « Recherche d'un livreur ».
 4. **Espace livreur Moussa** : connectez-vous à `moussa@demo.kaaraange.sn`, passez en ligne, acceptez l’offre de 30 s et dirigez-vous vers la boutique.
 5. **Mes achats** (acheteuse) : la carte montre le livreur en direct ; le QR du code de livraison.
-6. **Avec Moussa** : après le retrait du colis, **scanner/saisir le code** (bouton « J'ai reçu mon colis ») → règlements successifs du vendeur et du livreur, avec reprise persistante.
+6. **Avec Moussa** : après le retrait, Fatou voit **Accepter le colis** ou **Refuser** à l’arrivée. Après acceptation, Moussa **scanne/saisit le code** → règlements successifs du vendeur et du livreur, avec reprise persistante.
 7. **Scénario de refus** : refaire un achat, le livreur récupère le colis, l'acheteuse **refuse** (motif « non conforme ») → le prix revient instantanément, les frais restent bloqués → le vendeur confirme le retour → le livreur est payé quand même.
 8. **Console Lightning** : montrer les 3 nœuds, les canaux alice→bob→bob→carol, payer une facture console et vérifier SHA-256(preimage) = payment_hash dans le navigateur.
 9. **Portefeuille** : miner 101 blocs, montrer les 50 BTC qui deviennent disponibles, envoyer une transaction.
